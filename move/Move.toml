@@ -1,0 +1,15 @@
+[package]
+name = "SealedPair"
+edition = "2024.beta"
+license = "Apache-2.0"
+authors = ["Sealed Pair"]
+version = "0.1.0"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
+
+[addresses]
+sealed_pair = "0x0"
+
+[dev-addresses]
+sealed_pair = "0x0"
