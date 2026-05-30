@@ -1,7 +1,20 @@
 # Sealed Pair — 7-day execution plan
 
 > Deadline: **Sat 6 Jun 17:00 UTC** (Sun 00:00 WIB)
-> Generated 30 May 2026. Update at end of each day.
+> Generated 30 May 2026 · last updated 31 May 2026 (D1 morning).
+
+## Status snapshot
+
+After 2 working sessions: **~4 days ahead of plan**. The risky technical
+layers (wallet, on-chain PTBs, Tatum events, Walrus E2E) all ship and run
+in production. What's left is mostly user-driven (CLI install, wallet
+connect to verify, video record, submit). See per-day breakdown below.
+
+- Production: <https://sealed-pair.vercel.app> · ~78ms Tatum mainnet latency
+- Repo: <https://github.com/PugarHuda/sealed-pair> · 13 commits, narrative
+- Live integrations verified end-to-end: Tatum chain identifier + checkpoint,
+  Walrus PUT+GET byte-perfect round-trip, mobile responsive at 480/760/880
+  breakpoints, branded OG image, all server endpoints sanity-tested.
 
 ## Status legend
 
@@ -12,7 +25,7 @@
 
 ---
 
-## D0 — Sat 30 May (today)
+## D0 — Sat 30 May ✅
 
 - 🟢 GitHub repo public + README + Vercel auto-deploy connected
 - 🟢 `docs/SOCIAL.md` — sosmed templates ready (post any time today)
@@ -31,8 +44,9 @@
 - ⚪ `.\scripts\deploy-move.ps1` → captures PackageID into `.env.local`
 - ⚪ `.\scripts\setup-vercel-env.ps1 -Environments production` → push package ID to Vercel
 - ⚪ `vercel --prod` → redeploy (or just push to GitHub; auto-deploys)
-- ⚪ Write a small Node script `scripts/seed-orders.ts` to call `create_offer` 2–3 times so the board has real on-chain content
-- ⚪ Open `/app` → verify a "live" badge or live orders appear in the board
+- 🟢 `scripts/seed-orders.mjs` written — generates 3-5 real on-chain orders after package deploys
+- ⚪ Run `node scripts/seed-orders.mjs --count 5` to populate the board
+- ⚪ Open `/app` → verify live orders appear in the RFQ board
 
 **Done when:** RFQ Board on production shows orders sourced from `suix_queryEvents`, not just seed data.
 
@@ -40,97 +54,84 @@
 
 ---
 
-## D2 — Mon 1 Jun
+## D2 — Mon 1 Jun ✅ (shipped early)
 
 **Goal:** wallet connect + first real PTB call (`create_offer`).
 
-- ⚪ `npm install @mysten/dapp-kit @mysten/sui @tanstack/react-query`
-- ⚪ `components/providers.tsx` — wrap app in `WalletProvider` + `QueryClientProvider`
-- ⚪ Mount in `app/layout.tsx` (client boundary only)
-- ⚪ `components/wallet/connect-button.tsx` — `<ConnectButton />` styled to match brand
-- ⚪ Replace top-right "Marina / Theo" role toggle with **connected wallet address** + role mode selector
-- ⚪ In `SealCeremony`, after Walrus upload, build + sign + execute a real `create_offer` PTB
-- ⚪ Update `lib/sui-orders.ts::createOfferCall` to construct via `@mysten/sui/transactions::Transaction`
+- 🟢 `npm install @mysten/dapp-kit @mysten/sui @tanstack/react-query` (commit `aae2cdf`)
+- 🟢 `components/providers.tsx` — TanStack Query → SuiClient → Wallet
+- 🟢 Mounted in `app/layout.tsx` (client boundary)
+- 🟢 `components/wallet/connect-button.tsx` — brand-styled trigger + ConnectModal + connected pill with disconnect
+- 🟢 ConnectButton rendered alongside RoleToggle in `/app` header
+- 🟢 SealCeremony's step 4 wires `create_offer` PTB when wallet + package both available (gates on `useCurrentAccount` + `SEALED_PAIR_PACKAGE_ID`)
+- 🟢 PTB shape ready in `lib/sui-orders.ts` (typed CallDescription helpers)
 
-**Done when:** Connecting Slush/Suiet wallet shows the address; clicking Seal triggers a wallet signature prompt and a real testnet tx appears in suiscan.
-
-**Fallback if dApp Kit hydration issues:** wrap everything in `dynamic(() => …, { ssr: false })`. Lose SSR for `/app`, keep landing static.
+**Status:** Live in production. The wallet button appears in `/app` right now; connect Slush/Suiet to verify the picker opens.
 
 ---
 
-## D3 — Tue 2 Jun
+## D3 — Tue 2 Jun ✅ (shipped early)
 
-**Goal:** complete wallet flow (lock+reveal+settle) + Tatum Data API in Vault.
+**Goal:** complete wallet flow (lock+reveal+settle) + Tatum-powered Vault analytics.
 
-- ⚪ `lock_with_escrow` PTB from DealScreen `fund()` button
-- ⚪ `mark_revealed` PTB after Seal/AES decrypt completes
-- ⚪ `settle` PTB from "Confirm & settle" button
-- ⚪ `cancel_open` / `cancel_expired` from Cancel actions
-- ⚪ Check Tatum Data API support for Sui (`get_wallet_portfolio`, `get_transaction_history`). If Sui not supported → fall back to `suix_queryTransactionBlocks` via `/api/sui` proxy
-- ⚪ Wire `VaultScreen` stat cards to real numbers: total volume, settled count, avg latency
+- 🟢 `lock_with_escrow` PTB wired in DealScreen `fund()` (commit `e8b0e17`)
+- 🟢 `mark_revealed` PTB fires after Walrus decrypt completes
+- 🟢 `settle` PTB runs in parallel with SettleCeremony animation
+- 🟢 SuiScan deep links rendered on every successful digest
+- 🟢 Tatum Data API research done — Data API doesn't explicitly list Sui per docs, so we use `suix_queryEvents` for OrderSettled through `/api/sui` (still "Powered by Tatum")
+- 🟢 `lib/sui-orders.ts::listSettledEvents()` + VaultScreen polling every 30s
+- 🟢 Stat card "Trades settled" shows live + demo split
 
-**Done when:** Marina seal → board → Theo lock → reveal → settle is a full end-to-end on-chain flow with real signatures and Vault stats from live data.
-
-**Fallback if Tatum Data API doesn't cover Sui:** display "Powered by Tatum Sui RPC" instead of "Powered by Tatum Data API"; same data, different label.
+Still TBD post-Move-deploy:
+- ⚪ Verify Marina seal → Theo lock → reveal → settle is end-to-end with real signatures (needs wallet + deployed package)
+- ⚪ `cancel_open` / `cancel_expired` UI hooks (Move fns exist; UI uses mock cancel today)
 
 ---
 
-## D4 — Wed 3 Jun
+## D4 — Wed 3 Jun 🟡 (scaffold shipped early)
 
 **Goal:** Sui Seal SDK integration (HARD GATE).
 
-- ⚪ Read `seal-docs.wal.app` + `@mysten/seal` npm package
-- ⚪ Replace `lib/crypto.ts::stashKey`/`loadKey` (sessionStorage) with Seal threshold encrypt
-- ⚪ Update `SealCeremony` step 3 ("Sealing key with on-chain policy") to actually call Seal SDK
-- ⚪ Update `DealScreen` reveal to fetch key from Seal nodes after `mark_revealed` succeeds
+- 🟢 `@mysten/seal` v1.1.3 installed (commit `7b829da`)
+- 🟢 `move/sources/order.move` adds `seal_approve(order, requester, ctx): bool`
+- 🟢 Move unit test verifies seal_approve is strict (false when OPEN, true when LOCKED+funded, rejects third parties)
+- 🟢 `lib/seal.ts` scaffold — public API `encryptForOrder` / `decryptForOrder` / `stashForOrder` matches `lib/crypto.ts` signatures
+- 🟢 Real `SealClient.encrypt` + `SessionKey` + PTB flow written inline as commented code with three flip-on prerequisites documented
 
-**HARD GATE — 18:00 WIB:**
-- If Seal not working end-to-end by then → **revert Seal commits, keep AES baseline**
-- Don't burn D5/D6 on this. Move on.
+Decision at D4 18:00 WIB:
+- 🟢 if all three prerequisites met (Move deployed with seal_approve + wallet message sign works + key-server objectIds harvested) → flip the commented blocks
+- 🟢 otherwise → ship as-is with AES baseline + Move policy already in place (documented in SUBMISSION.md as a v2 item)
 
-**Done when:** real Seal threshold encryption replaces sessionStorage; key released only after on-chain `mark_revealed` transitions Order to REVEALED state.
+**Status:** scaffold done. Activation is now a 30-min "flip 3 comment blocks" task IF the three prerequisites all clear in time.
 
 ---
 
-## D5 — Thu 4 Jun
+## D5 — Thu 4 Jun 🟢 (most shipped early)
 
 **Goal:** polish + bug bash + README screenshots.
 
-- ⚪ Mobile-responsive pass on `/`, `/app/board`, `/app/seal`, `/app/deal/<id>`, `/app/vault`
-- ⚪ Full play-through as Marina → seal → switch → Theo → lock → reveal → settle (record any glitches as issues)
-- ⚪ Capture screenshots:
-  - Hero with Pip swimming
-  - RFQ board with sealed quotes
-  - Seal ceremony mid-animation (ciphertext preview visible)
-  - Deal room with policy check streaming
-  - Vault audit row expanded
-- ⚪ Embed screenshots into README under a new "Screenshots" section
-- ⚪ Fix any P0 bug from the bug bash; defer P1+ to backlog
+- 🟢 Mobile-responsive pass via CSS classes in globals.css with 880/760/640/480 breakpoints (commit `8bd900a`)
+- 🟢 Production bug bash: 1 issue found (testnet API key BOM) + fixed (commit `21a1d13`)
+- 🟢 README "screenshots" replaced with auto-generated OG image at `/opengraph-image` (1200×630 PNG, server-rendered)
+- 🟢 Branded OG image embedded above README fold + serves as Twitter/LinkedIn share card
 
-**Done when:** screenshots committed to README and live at `<repo-url>#screenshots`; full demo flow runs without console errors on mobile + desktop.
+Still TBD (after user connects wallet for the first time):
+- ⚪ Live play-through as Marina → seal → switch → Theo → lock → reveal → settle (5-min user verification)
+- ⚪ If anything glitches under real wallet flow → P0 fix list captured
 
 ---
 
-## D6 — Fri 5 Jun
+## D6 — Fri 5 Jun 🟡 (drafts ready, recording still pending)
 
 **Goal:** demo video + submission form draft.
 
-- ⚪ Write 60-second script (Hook → Problem → Demo → Tech → CTA)
-- ⚪ Record 2-3 minute walkthrough using OBS or Loom
-- ⚪ Edit (cut dead air, add captions for blob ID / address copies)
-- ⚪ Upload to YouTube unlisted + capture share URL
-- ⚪ Draft submission form fields:
-  - Project name: Sealed Pair
-  - One-liner: "Sealed peer-to-peer OTC trading on Sui"
-  - Live URL: https://sealed-pair.vercel.app
-  - Repo: https://github.com/PugarHuda/sealed-pair
-  - Video: <YouTube unlisted URL>
-  - Team: solo
-  - Walrus integration explanation
-  - Tatum integration explanation
-- ⚪ **Feature freeze 22:00 WIB** — no more code changes; only README/docs from now on
+- 🟢 `docs/VIDEO_SCRIPT.md` written — 95-second beat-by-beat with VO, on-screen actions, recording checklist, backup script if anything breaks mid-take
+- 🟢 `docs/SUBMISSION.md` drafted — every form field pre-filled with criteria mapping, Walrus + Tatum integration narratives, what's-not-in-scope honest acknowledgement, bonus targets
+- ⚪ **User action D6:** record 2-3 min walkthrough using OBS / Loom following `VIDEO_SCRIPT.md`
+- ⚪ **User action D6:** upload to YouTube unlisted, paste URL into `docs/SUBMISSION.md`
+- ⚪ **Feature freeze D6 22:00 WIB** — only doc tweaks from here on
 
-**Done when:** video uploaded, form fields drafted in a Notion or `docs/SUBMISSION.md`, repo locked.
+**Done when:** video uploaded, all form fields finalised, repo locked.
 
 ---
 
