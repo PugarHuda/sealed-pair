@@ -6,6 +6,9 @@ import { Badge, Btn, Mono, CeremonyStep } from "@/components/ui/primitives";
 import { IconName } from "@/components/ui/icon";
 import Mascot from "@/components/mascot";
 import { encryptText, generateKey, stashKey } from "@/lib/crypto";
+import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { Transaction } from "@mysten/sui/transactions";
+import { SEALED_PAIR_PACKAGE_ID } from "@/lib/sui-orders";
 
 /* ---------------- step runner ---------------- */
 function useSteps(steps: { ms: number }[], active: boolean, onComplete?: () => void) {
@@ -135,7 +138,7 @@ export function SealCeremony({
   order, onDone, onClose,
 }: {
   order: Order;
-  onDone: (patch: { blobId: string; publisher?: string }) => void;
+  onDone: (patch: { blobId: string; publisher?: string; txDigest?: string }) => void;
   onClose: () => void;
 }) {
   type Step = { label: string; detail?: string; icon: IconName; sub?: ReactNode };
@@ -143,8 +146,15 @@ export function SealCeremony({
   const [error, setError] = useState<string | null>(null);
   const [realBlobId, setRealBlobId] = useState<string | null>(null);
   const [publisher, setPublisher] = useState<string | undefined>(undefined);
+  const [txDigest, setTxDigest] = useState<string | null>(null);
   const cipherPreview = useRef("");
   const started = useRef(false);
+
+  // Wallet (D2/D3): when connected AND Move package deployed, we register
+  // the Order on-chain for real. Otherwise step 4 remains a visual mock.
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const onChainEnabled = !!(account && SEALED_PAIR_PACKAGE_ID);
 
   // Display blobId: real if available, else the placeholder so the UI doesn't flash
   const displayBlobId = realBlobId || order.blobId;
@@ -175,8 +185,12 @@ export function SealCeremony({
       sub: <CodeBlock title="seal_policy.move" lines={POLICY_SRC} accent="var(--seal)" />,
     },
     {
-      label: "Registering Order on Sui",
-      detail: "via Tatum RPC · sui_executeTransactionBlock",
+      label: onChainEnabled ? "Registering Order on Sui" : "Registering Order on Sui (demo)",
+      detail: onChainEnabled
+        ? txDigest
+          ? `digest ${short(txDigest, 10, 6)}`
+          : "signing + executing create_offer PTB"
+        : "wallet not connected — skipping on-chain registration",
       icon: "anchor",
     },
   ];
@@ -226,8 +240,38 @@ export function SealCeremony({
         await sleep(1100);
         setDone(3);
 
-        // ---- Step 4: Sui register (mock until Move package deployed)
-        await sleep(1000);
+        // ---- Step 4: Sui register
+        if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
+          try {
+            const t = order.terms;
+            // 5% of counter as escrow, scaled to MIST when give === SUI.
+            const escrowMist = t.give === "SUI"
+              ? BigInt(Math.max(1_000_000, Math.floor(t.amount * 0.05 * 1e9)))
+              : BigInt(Math.max(1_000_000, Math.floor(t.counter * 0.02 * 1e6)));
+            const expiryEpoch = BigInt(Number.MAX_SAFE_INTEGER); // refined when reading current epoch
+            const tx = new Transaction();
+            tx.moveCall({
+              target: `${SEALED_PAIR_PACKAGE_ID}::order::create_offer`,
+              arguments: [
+                tx.pure.vector("u8", Array.from(new TextEncoder().encode(blobId))),
+                tx.pure.id(order.policyId),
+                tx.pure.vector("u8", Array.from(new TextEncoder().encode(order.give))),
+                tx.pure.vector("u8", Array.from(new TextEncoder().encode(order.get))),
+                tx.pure.u64(escrowMist),
+                tx.pure.u64(expiryEpoch),
+              ],
+            });
+            const result = await signAndExecute({ transaction: tx });
+            setTxDigest(result.digest);
+          } catch (e) {
+            // Wallet rejected or chain error — degrade to demo mode for this step
+            // but keep the Walrus blob (the sealed commitment) so the order still flows.
+            console.warn("[seal] on-chain register failed, falling back to demo:", e);
+            await sleep(700);
+          }
+        } else {
+          await sleep(1000);
+        }
         setDone(4);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Sealing failed");
@@ -285,13 +329,27 @@ export function SealCeremony({
             <Mono label="blobId" copyable>{short(displayBlobId, 10, 6)}</Mono>
             <Mono label="order" copyable>{short(order.orderObj)}</Mono>
             <Mono label="policy" copyable>{short(order.policyId)}</Mono>
+            {txDigest && <Mono label="tx" copyable>{short(txDigest, 10, 6)}</Mono>}
           </div>
           {publisher && (
             <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
               via {publisher}
+              {txDigest && (
+                <>
+                  {" · "}
+                  <a
+                    href={`https://suiscan.xyz/testnet/tx/${txDigest}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--accent)", textDecoration: "underline" }}
+                  >
+                    view on SuiScan ↗
+                  </a>
+                </>
+              )}
             </div>
           )}
-          <Btn full size="lg" icon="search" onClick={() => onDone({ blobId: displayBlobId, publisher })}>
+          <Btn full size="lg" icon="search" onClick={() => onDone({ blobId: displayBlobId, publisher, txDigest: txDigest ?? undefined })}>
             See it live on the board
           </Btn>
         </div>
