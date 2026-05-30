@@ -8,6 +8,9 @@ import Icon from "@/components/ui/icon";
 import Mascot from "@/components/mascot";
 import { MakerTag, lblS, valS } from "@/components/app/shared";
 import { decryptText, loadKey } from "@/lib/crypto";
+import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { Transaction } from "@mysten/sui/transactions";
+import { SEALED_PAIR_PACKAGE_ID } from "@/lib/sui-orders";
 
 const useTimeout = (fn: () => void, ms: number | null) => {
   useEffect(() => {
@@ -179,13 +182,40 @@ export default function DealScreen({
   const [phase, setPhase] = useState<Phase>(
     order.state === "SETTLED" ? "settled" : order.revealed ? "revealed" : "sealed",
   );
+  const [lockTxDigest, setLockTxDigest] = useState<string | null>(null);
   const revealed = phase === "revealed" || phase === "settled";
   const revealing = phase === "revealing";
 
+  // Wallet hooks for real on-chain transitions (D2/D3). Falls back to mock
+  // sleeps when wallet not connected or NEXT_PUBLIC_SEALED_PAIR_PACKAGE_ID
+  // hasn't been set yet.
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const onChainEnabled = !!(account && SEALED_PAIR_PACKAGE_ID && order.orderObj.startsWith("0x") && order.orderObj.length === 66);
+
   const fund = async () => {
     setPhase("funding");
-    // simulate escrow funding tx pacing (mock until Move package deployed)
-    await new Promise((r) => setTimeout(r, 1300));
+
+    // ---- Real on-chain lock_with_escrow (when prerequisites met) ----
+    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
+      try {
+        const tx = new Transaction();
+        const escrowMist = BigInt(order.escrow.amount); // already in MIST per create_offer
+        const [escrowCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(escrowMist)]);
+        tx.moveCall({
+          target: `${SEALED_PAIR_PACKAGE_ID}::order::lock_with_escrow`,
+          arguments: [tx.object(order.orderObj), escrowCoin, tx.object("0x6")],
+        });
+        const result = await signAndExecute({ transaction: tx });
+        setLockTxDigest(result.digest);
+      } catch (e) {
+        console.warn("[fund] on-chain lock failed, falling back to demo:", e);
+        await new Promise((r) => setTimeout(r, 1300));
+      }
+    } else {
+      await new Promise((r) => setTimeout(r, 1300));
+    }
+
     onUpdate(order.id, {
       state: "LOCKED",
       escrow: { ...order.escrow, funded: true, by: PERSONAS[role].name, byAddr: PERSONAS[role].addr },
@@ -218,8 +248,21 @@ export default function DealScreen({
         }
       }
     } catch (e) {
-      // Decrypt failed (corrupt key, bad blob) — keep mock terms so the UI still functions.
       console.warn("[reveal] decrypt skipped:", e);
+    }
+
+    // Optional on-chain mark_revealed so indexers (and Vault) see the state transition.
+    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
+      try {
+        const tx2 = new Transaction();
+        tx2.moveCall({
+          target: `${SEALED_PAIR_PACKAGE_ID}::order::mark_revealed`,
+          arguments: [tx2.object(order.orderObj)],
+        });
+        await signAndExecute({ transaction: tx2 });
+      } catch (e) {
+        console.warn("[reveal] mark_revealed tx failed (non-fatal):", e);
+      }
     }
 
     // Match the existing policy-check animation runtime (~2.5s of streaming lines)

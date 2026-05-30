@@ -372,6 +372,40 @@ export function SettleCeremony({
   onClose: () => void;
 }) {
   const t = order.terms;
+  const [realDigest, setRealDigest] = useState<string | null>(null);
+  const settleStarted = useRef(false);
+
+  // Real settle PTB runs in parallel with the visual animation when the
+  // wallet + package are wired. By the time the animation finishes the
+  // real digest is usually back.
+  const account = useCurrentAccount();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const onChainEnabled = !!(
+    account &&
+    SEALED_PAIR_PACKAGE_ID &&
+    order.orderObj.startsWith("0x") &&
+    order.orderObj.length === 66
+  );
+
+  useEffect(() => {
+    if (!onChainEnabled || !SEALED_PAIR_PACKAGE_ID || settleStarted.current) return;
+    settleStarted.current = true;
+    (async () => {
+      try {
+        const tx = new Transaction();
+        tx.moveCall({
+          target: `${SEALED_PAIR_PACKAGE_ID}::order::settle`,
+          arguments: [tx.object(order.orderObj)],
+        });
+        const result = await signAndExecute({ transaction: tx });
+        setRealDigest(result.digest);
+      } catch (e) {
+        console.warn("[settle] on-chain settle failed (non-fatal):", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   type Step = { label: string; detail?: string; icon: IconName; ms: number; sub?: ReactNode };
   const steps: Step[] = [
     {
@@ -452,9 +486,21 @@ emit Receipt { blob: 0x…, digest }`}
       {finished && (
         <div className="fade-up" style={{ padding: "20px 28px 28px", borderTop: "1px solid var(--border-soft)" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            <Mono label="digest" copyable>{short(digest(), 10, 6)}</Mono>
+            <Mono label="digest" copyable>{short(realDigest || digest(), 10, 6)}</Mono>
             <Mono label="receipt" copyable>{short(objId())}</Mono>
           </div>
+          {realDigest && (
+            <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
+              <a
+                href={`https://suiscan.xyz/testnet/tx/${realDigest}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--accent)", textDecoration: "underline" }}
+              >
+                view on SuiScan ↗
+              </a>
+            </div>
+          )}
           <Btn full size="lg" variant="primary" icon="shield" onClick={onDone}>View receipt in the Vault</Btn>
         </div>
       )}
