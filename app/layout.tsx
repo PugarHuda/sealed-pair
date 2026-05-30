@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Baloo_2, Plus_Jakarta_Sans, Space_Mono } from "next/font/google";
 import "./globals.css";
+import Providers from "@/components/providers";
 
 const baloo = Baloo_2({
   subsets: ["latin"],
@@ -38,7 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       style={{ ["--accent-pick" as string]: "#1f8fd1" }}
       className={`${baloo.variable} ${jakarta.variable} ${spaceMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

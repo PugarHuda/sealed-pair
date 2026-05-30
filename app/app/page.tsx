@@ -16,6 +16,7 @@ import VaultScreen from "@/components/app/screens/vault";
 import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus } from "@/lib/sui-orders";
+import ConnectButton from "@/components/wallet/connect-button";
 
 type Role = "marina" | "theo";
 type View = "board" | "create" | "vault" | "deal";
@@ -272,6 +273,7 @@ export default function AppPage() {
           </nav>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
             <NetworkPill network="mainnet" />
+            <ConnectButton />
             <RoleToggle role={role} onChange={setRole} />
           </div>
         </div>
