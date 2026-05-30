@@ -146,7 +146,16 @@ async function main() {
     const escrowMist = q.give === "SUI"
       ? BigInt(Math.max(1_000_000, Math.floor(q.amount * 0.05 * 1e9)))
       : BigInt(Math.max(1_000_000, Math.floor(q.counter * 0.02 * 1e6)));
-    const expiryEpoch = BigInt(Number.MAX_SAFE_INTEGER);
+    // Pull current epoch from chain, set expiry ~30 epochs ahead. Falls back
+    // to a hardcoded value if the system-state read fails so the seed still works.
+    let expiryEpoch;
+    try {
+      const sys = await client.getLatestSuiSystemState();
+      const current = BigInt(sys.epoch ?? "0");
+      expiryEpoch = current + 30n;
+    } catch {
+      expiryEpoch = 1000n;
+    }
     const policyId = "0x" + "00".repeat(31) + "01"; // placeholder until Seal SDK fully wired
 
     const tx = new Transaction();

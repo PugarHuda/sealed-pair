@@ -62,8 +62,11 @@ export async function suiRpc<T = Json>(
   });
 
   if (!res.ok) {
+    // Log full upstream body server-side; surface only the status code so
+    // the gateway hostname / key-validation hints don't leak via the proxy.
     const text = await res.text().catch(() => "");
-    throw new RpcError(res.status, `Tatum gateway returned HTTP ${res.status}: ${text.slice(0, 200)}`);
+    console.warn("[sui-rpc] upstream non-2xx", { method, network: net, status: res.status, body: text.slice(0, 400) });
+    throw new RpcError(res.status, `Tatum gateway returned HTTP ${res.status}`);
   }
 
   const body = (await res.json()) as RpcResponse<T>;

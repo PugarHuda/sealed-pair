@@ -7,18 +7,32 @@ export const runtime = "nodejs";
 // Walrus's public publishers cap at 10 MiB.
 export const maxDuration = 30;
 
+const MAX_BYTES = 10 * 1024 * 1024; // public publisher cap
+
 export async function PUT(req: NextRequest) {
   const url = req.nextUrl;
   const epochs = numParam(url.searchParams.get("epochs"));
   const deletable = url.searchParams.get("deletable") === "true";
   const sendObjectTo = url.searchParams.get("send_object_to") || undefined;
 
+  // Reject oversized payloads *before* reading the body into memory.
+  const lenHeader = req.headers.get("content-length");
+  if (lenHeader && Number(lenHeader) > MAX_BYTES) {
+    return NextResponse.json(
+      { error: "Body exceeds public publisher limit (10 MiB)" },
+      { status: 413 },
+    );
+  }
+
   const buf = Buffer.from(await req.arrayBuffer());
   if (buf.byteLength === 0) {
     return NextResponse.json({ error: "Empty body" }, { status: 400 });
   }
-  if (buf.byteLength > 10 * 1024 * 1024) {
-    return NextResponse.json({ error: "Body exceeds public publisher limit (10 MiB)" }, { status: 413 });
+  if (buf.byteLength > MAX_BYTES) {
+    return NextResponse.json(
+      { error: "Body exceeds public publisher limit (10 MiB)" },
+      { status: 413 },
+    );
   }
 
   try {
@@ -30,8 +44,13 @@ export async function PUT(req: NextRequest) {
       raw: result.raw,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ ok: false, error: msg }, { status: 502 });
+    // Log full message server-side; return a generic one to the client so we
+    // don't leak the list of upstream publisher URLs.
+    console.warn("[walrus-store] upstream error:", e instanceof Error ? e.message : e);
+    return NextResponse.json(
+      { ok: false, error: "Upstream Walrus error — all publishers failed" },
+      { status: 502 },
+    );
   }
 }
 

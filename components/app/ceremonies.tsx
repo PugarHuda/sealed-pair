@@ -8,7 +8,7 @@ import Mascot from "@/components/mascot";
 import { encryptText, generateKey, stashKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch } from "@/lib/sui-orders";
 
 /* ---------------- step runner ---------------- */
 function useSteps(steps: { ms: number }[], active: boolean, onComplete?: () => void) {
@@ -138,7 +138,7 @@ export function SealCeremony({
   order, onDone, onClose,
 }: {
   order: Order;
-  onDone: (patch: { blobId: string; publisher?: string; txDigest?: string }) => void;
+  onDone: (patch: { blobId: string; publisher?: string; txDigest?: string; escrowRequiredMist?: string }) => void;
   onClose: () => void;
 }) {
   type Step = { label: string; detail?: string; icon: IconName; sub?: ReactNode };
@@ -243,12 +243,13 @@ export function SealCeremony({
         // ---- Step 4: Sui register
         if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
           try {
-            const t = order.terms;
-            // 5% of counter as escrow, scaled to MIST when give === SUI.
-            const escrowMist = t.give === "SUI"
-              ? BigInt(Math.max(1_000_000, Math.floor(t.amount * 0.05 * 1e9)))
-              : BigInt(Math.max(1_000_000, Math.floor(t.counter * 0.02 * 1e6)));
-            const expiryEpoch = BigInt(Number.MAX_SAFE_INTEGER); // refined when reading current epoch
+            const escrowMist = computeEscrowMist(order.terms, order.give);
+            // Set expiry ~30 epochs ahead of current (≈30 days on testnet);
+            // falls back to a safe 1000 if we can't read the system state.
+            const currentEpoch = await fetchCurrentEpoch("testnet");
+            const expiryEpoch = BigInt((currentEpoch > 0 ? currentEpoch : 0) + 30);
+            // Save resolved MIST so DealScreen.fund() uses the exact amount.
+            (order as { escrowRequiredMist?: string }).escrowRequiredMist = escrowMist.toString();
             const tx = new Transaction();
             tx.moveCall({
               target: `${SEALED_PAIR_PACKAGE_ID}::order::create_offer`,
@@ -349,7 +350,15 @@ export function SealCeremony({
               )}
             </div>
           )}
-          <Btn full size="lg" icon="search" onClick={() => onDone({ blobId: displayBlobId, publisher, txDigest: txDigest ?? undefined })}>
+          <Btn
+            full size="lg" icon="search"
+            onClick={() => onDone({
+              blobId: displayBlobId,
+              publisher,
+              txDigest: txDigest ?? undefined,
+              escrowRequiredMist: (order as { escrowRequiredMist?: string }).escrowRequiredMist,
+            })}
+          >
             See it live on the board
           </Btn>
         </div>
@@ -373,6 +382,7 @@ export function SettleCeremony({
 }) {
   const t = order.terms;
   const [realDigest, setRealDigest] = useState<string | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
   const settleStarted = useRef(false);
 
   // Real settle PTB runs in parallel with the visual animation when the
@@ -400,7 +410,7 @@ export function SettleCeremony({
         const result = await signAndExecute({ transaction: tx });
         setRealDigest(result.digest);
       } catch (e) {
-        console.warn("[settle] on-chain settle failed (non-fatal):", e);
+        setSettleError(e instanceof Error ? e.message : "Settle failed on-chain");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -459,10 +469,15 @@ emit Receipt { blob: 0x…, digest }`}
           <Mascot pose={finished ? "proud" : "idle"} size={92} />
         </div>
         <div>
-          <Badge tone={finished ? "good" : "open"} icon={finished ? "check" : "bolt"}>
-            {finished ? "Settled" : "Settling"}
+          <Badge
+            tone={settleError ? "bad" : finished ? "good" : "open"}
+            icon={settleError ? "bolt" : finished ? "check" : "bolt"}
+          >
+            {settleError ? "Settle failed" : finished ? "Settled" : "Settling"}
           </Badge>
-          <h2 style={{ fontSize: 24, marginTop: 8 }}>{finished ? "Trade settled atomically." : "Settling atomically…"}</h2>
+          <h2 style={{ fontSize: 24, marginTop: 8 }}>
+            {settleError ? "Settlement rejected by chain." : finished ? "Trade settled atomically." : "Settling atomically…"}
+          </h2>
           <div style={{ color: "var(--text-dim)", fontSize: 14, marginTop: 4 }}>
             One block. Both legs. Either both transfers land, or neither does.
           </div>
@@ -483,7 +498,7 @@ emit Receipt { blob: 0x…, digest }`}
           </div>
         ))}
       </div>
-      {finished && (
+      {finished && !settleError && (
         <div className="fade-up" style={{ padding: "20px 28px 28px", borderTop: "1px solid var(--border-soft)" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
             <Mono label="digest" copyable>{short(realDigest || digest(), 10, 6)}</Mono>
@@ -502,6 +517,26 @@ emit Receipt { blob: 0x…, digest }`}
             </div>
           )}
           <Btn full size="lg" variant="primary" icon="shield" onClick={onDone}>View receipt in the Vault</Btn>
+        </div>
+      )}
+      {settleError && (
+        <div className="fade-up" style={{ padding: "20px 28px 28px", borderTop: "1px solid var(--border-soft)" }}>
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "color-mix(in oklab, var(--bad) 14%, transparent)",
+              border: "1px solid var(--bad)",
+              borderRadius: "var(--r-sm)",
+              color: "var(--bad)",
+              fontSize: 13,
+              fontWeight: 600,
+              marginBottom: 14,
+              wordBreak: "break-word",
+            }}
+          >
+            <b>Settle failed on-chain.</b> {settleError.slice(0, 200)}
+          </div>
+          <Btn full variant="outline" onClick={onClose}>Close</Btn>
         </div>
       )}
     </Overlay>

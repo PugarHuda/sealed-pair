@@ -43,6 +43,10 @@ export type Order = {
   walEpochs: number;
   state: OrderState;
   escrow: { funded: boolean; by: string | null; byAddr: string | null; amount: number; asset: AssetSym };
+  /** Exact MIST amount required for lock_with_escrow. Populated from the
+   *  OrderPosted event (live orders) or from create_offer (newly-sealed).
+   *  String so it survives u64 -> JSON without precision loss. */
+  escrowRequiredMist?: string;
   createdAgo: string;
   expiresIn: string;
   settleDigest: string | null;

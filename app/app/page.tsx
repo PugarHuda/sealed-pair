@@ -189,9 +189,13 @@ export default function AppPage() {
     o.terms.note = draft.terms.note;
     setSealDraft(o);
   };
-  const finishSeal = (patch: { blobId: string; publisher?: string }) => {
+  const finishSeal = (patch: { blobId: string; publisher?: string; txDigest?: string; escrowRequiredMist?: string }) => {
     if (sealDraft) {
-      const sealed: Order = { ...sealDraft, blobId: patch.blobId };
+      const sealed: Order = {
+        ...sealDraft,
+        blobId: patch.blobId,
+        ...(patch.escrowRequiredMist ? { escrowRequiredMist: patch.escrowRequiredMist } : {}),
+      };
       setOrders((os) => [sealed, ...os]);
     }
     setSealDraft(null);

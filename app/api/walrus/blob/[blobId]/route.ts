@@ -26,7 +26,10 @@ export async function GET(
       },
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    console.warn("[walrus-read] upstream error", { blobId, error: e instanceof Error ? e.message : e });
+    return NextResponse.json(
+      { error: "Upstream Walrus error — blob not retrievable" },
+      { status: 502 },
+    );
   }
 }

@@ -119,6 +119,17 @@ fun seal_approve_policy_is_strict() {
     // Step 3: third-party requester must still be rejected.
     assert!(!so::seal_approve(&order, @0xC0DE, scenario.ctx()), 104);
 
+    // Step 4: after mark_revealed and settle, parties keep key access
+    // (audit/historical re-decrypt). Third parties stay rejected.
+    scenario.next_tx(MAKER);
+    so::mark_revealed(&mut order, scenario.ctx());
+    assert!(so::seal_approve(&order, MAKER, scenario.ctx()), 105);
+    assert!(so::seal_approve(&order, TAKER, scenario.ctx()), 106);
+    so::settle(&mut order, scenario.ctx());
+    assert!(so::seal_approve(&order, MAKER, scenario.ctx()), 107);
+    assert!(so::seal_approve(&order, TAKER, scenario.ctx()), 108);
+    assert!(!so::seal_approve(&order, @0xC0DE, scenario.ctx()), 109);
+
     ts::return_shared(order);
     clock::destroy_for_testing(clock);
     ts::end(scenario);

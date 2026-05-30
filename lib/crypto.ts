@@ -104,12 +104,23 @@ export function base64ToBytes(s: string): Uint8Array {
 const KEY_PREFIX = "sp:key:";
 
 export async function stashKey(blobId: string, key: CryptoKey): Promise<void> {
+  if (typeof window === "undefined" || typeof sessionStorage === "undefined") return;
   const b64 = await exportKeyBase64(key);
-  sessionStorage.setItem(KEY_PREFIX + blobId, b64);
+  try {
+    sessionStorage.setItem(KEY_PREFIX + blobId, b64);
+  } catch {
+    // Private mode / quota exceeded — keys will stay in memory only,
+    // which means cross-tab reveal stops working. Acceptable for demo.
+  }
 }
 
 export async function loadKey(blobId: string): Promise<CryptoKey | null> {
-  const b64 = sessionStorage.getItem(KEY_PREFIX + blobId);
-  if (!b64) return null;
-  return importKeyBase64(b64);
+  if (typeof window === "undefined" || typeof sessionStorage === "undefined") return null;
+  try {
+    const b64 = sessionStorage.getItem(KEY_PREFIX + blobId);
+    if (!b64) return null;
+    return importKeyBase64(b64);
+  } catch {
+    return null;
+  }
 }

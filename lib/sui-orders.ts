@@ -13,8 +13,38 @@
 //   - Wallet integration (signing). Adding @mysten/dapp-kit gives us that;
 //     until then, these helpers describe transactions for a future wallet call.
 
-import type { AssetSym, Order } from "./types";
+import type { AssetSym, Order, OrderTerms } from "./types";
 import { bandFor, fmt, makeOrder } from "./data";
+
+/** Compute the MIST-precision escrow size used by create_offer + lock_with_escrow.
+ *  SUI-side trades quote 5% of give-amount in MIST.
+ *  Other-side trades quote 2% of counter in the get-asset's smallest unit
+ *  (treated as 1e6 for stablecoins as a reasonable hackathon default).
+ */
+export function computeEscrowMist(terms: OrderTerms, give: AssetSym): bigint {
+  if (give === "SUI") {
+    return BigInt(Math.max(1_000_000, Math.floor(terms.amount * 0.05 * 1e9)));
+  }
+  return BigInt(Math.max(1_000_000, Math.floor(terms.counter * 0.02 * 1e6)));
+}
+
+/** Fetch the current Sui epoch via our /api/sui proxy. Falls back to 0 on
+ *  failure so callers can apply a safe default (e.g., +30 epochs ahead). */
+export async function fetchCurrentEpoch(network: "mainnet" | "testnet" | "devnet" = "testnet"): Promise<number> {
+  try {
+    const res = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method: "sui_getLatestSuiSystemState", network }),
+    });
+    if (!res.ok) return 0;
+    const json = (await res.json()) as { result?: { epoch?: string } };
+    const epoch = Number(json.result?.epoch ?? 0);
+    return Number.isFinite(epoch) ? epoch : 0;
+  } catch {
+    return 0;
+  }
+}
 
 /* ============ env resolution ============ */
 
@@ -173,22 +203,28 @@ function eventToOrder(evt: RpcEvent): Order | null {
   const p = evt.parsedJson as Partial<OrderPostedEvent>;
   if (!p.order_id || !p.maker) return null;
 
-  // blob_id arrives as either a number[] or a string we can decode.
   const blobIdRaw = (evt.parsedJson as { blob_id?: unknown }).blob_id;
   const blobId = decodeBytesField(blobIdRaw);
 
   const give = (p.give_kind ?? "SUI") as AssetSym;
   const get = (p.get_kind ?? "USDC") as AssetSym;
-  // Amount/price are sealed off-chain — board only knows the size band, which
-  // we approximate from the escrow size until reveal.
-  const escrowAmount = Number(p.escrow_required ?? 0);
+  // Event payload's `escrow_required` IS the MIST-precision value used by
+  // lock_with_escrow on-chain. Preserve it as a string to avoid u64
+  // precision loss when we round-trip through JSON.
+  const escrowMistStr = String(p.escrow_required ?? "0");
+  const escrowMistNum = Number(escrowMistStr);
+  // Display amount: we don't know the true give-amount until reveal, so
+  // back-derive a plausible figure from the escrow (5% rule of thumb).
+  const approxGiveAmount = escrowMistNum > 0
+    ? (give === "SUI" ? Math.floor(escrowMistNum / 1e9 / 0.05) : Math.floor(escrowMistNum / 1e6 / 0.02))
+    : 10_000;
 
   const base = makeOrder({
     maker: { name: shortAddr(p.maker), handle: p.maker.slice(0, 10), color: "#7b8cff" },
     side: "SELL",
     give,
     get,
-    amount: escrowAmount > 0 ? Math.max(10_000, Math.floor(escrowAmount / 100)) : 10_000,
+    amount: Math.max(1_000, approxGiveAmount),
     price: 0,
     createdAgo: evt.timestampMs ? timeAgo(Number(evt.timestampMs)) : "live",
     expiresIn: `epoch ${p.expiry_epoch ?? "?"}`,
@@ -198,7 +234,8 @@ function eventToOrder(evt: RpcEvent): Order | null {
     ...base,
     blobId,
     orderObj: String(p.order_id),
-    sizeBand: bandFor(escrowAmount > 0 ? escrowAmount : 10_000),
+    sizeBand: bandFor(approxGiveAmount),
+    escrowRequiredMist: escrowMistStr,
   };
 }
 

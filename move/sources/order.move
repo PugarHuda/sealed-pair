@@ -234,13 +234,20 @@ public entry fun cancel_expired(order: &mut Order, ctx: &mut TxContext) {
 /// this function before handing the key over to the requester.
 ///
 /// Policy:
-///   - The order must be LOCKED (taker has committed escrow), AND
-///   - The escrow must actually be funded, AND
+///   - The order is past the OPEN gate (escrow has been funded at some point), AND
 ///   - The requester must be either the maker or the taker, AND
 ///   - The current epoch must be before the order expiry.
+///
+/// Once an order transitions LOCKED -> REVEALED -> SETTLED, parties retain
+/// key access so the audit trail can re-decrypt the original ciphertext
+/// from Walrus after the fact (judges verifying historic settlements,
+/// regulatory audit, etc.). Only OPEN (no taker yet) and CANCELLED
+/// (refunded, terms no longer relevant) deny access.
 public fun seal_approve(order: &Order, requester: address, ctx: &TxContext): bool {
-    order.state == STATE_LOCKED
-        && balance::value(&order.escrow) >= order.escrow_required
+    let state_ok = order.state == STATE_LOCKED
+        || order.state == STATE_REVEALED
+        || order.state == STATE_SETTLED;
+    state_ok
         && is_party(order, requester)
         && tx_context::epoch(ctx) < order.expiry_epoch
 }

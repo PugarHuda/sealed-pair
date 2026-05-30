@@ -10,7 +10,7 @@ import { MakerTag, lblS, valS } from "@/components/app/shared";
 import { decryptText, loadKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist } from "@/lib/sui-orders";
 
 const useTimeout = (fn: () => void, ms: number | null) => {
   useEffect(() => {
@@ -193,14 +193,21 @@ export default function DealScreen({
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const onChainEnabled = !!(account && SEALED_PAIR_PACKAGE_ID && order.orderObj.startsWith("0x") && order.orderObj.length === 66);
 
+  const [fundError, setFundError] = useState<string | null>(null);
+
   const fund = async () => {
+    setFundError(null);
     setPhase("funding");
 
     // ---- Real on-chain lock_with_escrow (when prerequisites met) ----
     if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
       try {
         const tx = new Transaction();
-        const escrowMist = BigInt(order.escrow.amount); // already in MIST per create_offer
+        // Prefer the on-chain MIST amount captured at create_offer time;
+        // fall back to the deterministic formula for demo orders.
+        const escrowMist = order.escrowRequiredMist
+          ? BigInt(order.escrowRequiredMist)
+          : computeEscrowMist(order.terms, order.give);
         const [escrowCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(escrowMist)]);
         tx.moveCall({
           target: `${SEALED_PAIR_PACKAGE_ID}::order::lock_with_escrow`,
@@ -209,8 +216,12 @@ export default function DealScreen({
         const result = await signAndExecute({ transaction: tx });
         setLockTxDigest(result.digest);
       } catch (e) {
-        console.warn("[fund] on-chain lock failed, falling back to demo:", e);
-        await new Promise((r) => setTimeout(r, 1300));
+        // Lock is the one path where a chain failure must be surfaced —
+        // proceeding to reveal/settle without a real escrow is misleading.
+        const msg = e instanceof Error ? e.message : "Lock failed";
+        setFundError(msg);
+        setPhase("sealed");
+        return;
       }
     } else {
       await new Promise((r) => setTimeout(r, 1300));
@@ -251,7 +262,9 @@ export default function DealScreen({
       console.warn("[reveal] decrypt skipped:", e);
     }
 
-    // Optional on-chain mark_revealed so indexers (and Vault) see the state transition.
+    // On-chain mark_revealed — required for the subsequent settle PTB to pass
+    // (Move asserts state == REVEALED). If this fails we must NOT advance the
+    // phase, otherwise the user sees a "reveal" they can't settle.
     if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
       try {
         const tx2 = new Transaction();
@@ -261,7 +274,10 @@ export default function DealScreen({
         });
         await signAndExecute({ transaction: tx2 });
       } catch (e) {
-        console.warn("[reveal] mark_revealed tx failed (non-fatal):", e);
+        const msg = e instanceof Error ? e.message : "mark_revealed failed";
+        setFundError(`Reveal blocked — ${msg.slice(0, 100)}`);
+        setPhase("sealed");
+        return;
       }
     }
 
@@ -343,6 +359,24 @@ export default function DealScreen({
 
             {!isMine && (phase === "sealed" || phase === "funding") && (
               <>
+                {fundError && (
+                  <div
+                    className="fade-up"
+                    style={{
+                      padding: "10px 12px",
+                      background: "color-mix(in oklab, var(--bad) 14%, transparent)",
+                      border: "1px solid var(--bad)",
+                      borderRadius: "var(--r-sm)",
+                      color: "var(--bad)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      marginBottom: 12,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    <b>Tx failed — escrow not posted.</b> {fundError.slice(0, 160)}
+                  </div>
+                )}
                 <div style={{ background: "var(--deep)", borderRadius: "var(--r-sm)", padding: 14, marginBottom: 14, display: "grid", gap: 10 }}>
                   <Row label="Good-faith escrow"><b>{fmt(order.escrow.amount)} {order.escrow.asset}</b></Row>
                   <Row label="Refundable"><Badge tone="good" size="sm">Yes, if maker bails</Badge></Row>
@@ -351,7 +385,7 @@ export default function DealScreen({
                   </div>
                 </div>
                 <Btn full size="lg" variant="seal" icon="unlock" disabled={phase === "funding"} onClick={fund}>
-                  {phase === "funding" ? "Funding…" : "Fund escrow & request reveal"}
+                  {phase === "funding" ? "Funding…" : fundError ? "Retry — fund escrow & request reveal" : "Fund escrow & request reveal"}
                 </Btn>
               </>
             )}
