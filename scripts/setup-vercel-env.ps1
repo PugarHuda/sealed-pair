@@ -1,8 +1,8 @@
-# scripts/setup-vercel-env.ps1 — push every variable from .env.local to Vercel
+# scripts/setup-vercel-env.ps1 -- push every variable from .env.local to Vercel
 #
 # Pre-requisites:
-#   1. `vercel login` (one-time, interactive — opens your browser)
-#   2. `vercel link --yes` from this directory (links cwd to a Vercel project)
+#   1. vercel login (one-time, interactive -- opens your browser)
+#   2. vercel link --yes from this directory
 #
 # Usage:
 #   .\scripts\setup-vercel-env.ps1                # pushes to all three environments
@@ -12,26 +12,32 @@
 #   - Reads .env.local from repo root, skips blank lines and comments.
 #   - Removes the variable first (if exists) so re-running is idempotent.
 #   - Will NOT push values that look unset (placeholders like t-XXXX).
+#   - All vercel calls are silenced on stderr to avoid the harmless
+#     "<claude-code-hint>" emission tripping ErrorAction.
 
 [CmdletBinding()]
 param(
     [string[]]$Environments = @("production", "preview", "development")
 )
 
-$ErrorActionPreference = "Stop"
+# Continue so a single failed call doesn't kill the loop.
+$ErrorActionPreference = "Continue"
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $repoRoot ".env.local"
 
 if (-not (Test-Path $envFile)) {
-    throw ".env.local not found at $envFile"
+    Write-Host "ERROR: .env.local not found at $envFile" -ForegroundColor Red
+    exit 1
 }
 if (-not (Get-Command vercel -ErrorAction SilentlyContinue)) {
-    throw "vercel CLI not in PATH. Run: npm install -g vercel"
+    Write-Host "ERROR: vercel CLI not in PATH. Run: npm install -g vercel" -ForegroundColor Red
+    exit 1
 }
 
 $lines = Get-Content $envFile | Where-Object { $_ -match "^\s*[A-Z]" -and $_ -match "=" }
 if (-not $lines) {
-    Write-Host "No variables found in .env.local — nothing to push." -ForegroundColor Yellow
+    Write-Host "No variables found in .env.local -- nothing to push." -ForegroundColor Yellow
     exit 0
 }
 
@@ -40,7 +46,6 @@ foreach ($line in $lines) {
     $name = $line.Substring(0, $idx).Trim()
     $value = $line.Substring($idx + 1).Trim()
 
-    # skip obvious placeholders
     if ($value -match "^t-X+|^XXXX|YOUR_") {
         Write-Host "skip $name (placeholder)" -ForegroundColor DarkGray
         continue
@@ -51,15 +56,20 @@ foreach ($line in $lines) {
     }
 
     foreach ($env in $Environments) {
-        # Idempotency: remove first (silently), then add
-        & vercel env rm $name $env --yes 2>$null | Out-Null
-        $value | & vercel env add $name $env | Out-Null
+        # Remove existing (ignore failure if it doesn't exist yet).
+        & vercel env rm $name $env --yes 2>$null 1>$null
+        # Use --value + --yes flags: this form works for all environments
+        # including 'preview' (which otherwise asks for a git branch).
+        & vercel env add $name $env --value $value --yes 2>$null 1>$null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ $name → $env" -ForegroundColor Green
+            Write-Host "[OK]  $name -> $env" -ForegroundColor Green
         } else {
-            Write-Host "✗ $name → $env  (vercel exit $LASTEXITCODE)" -ForegroundColor Red
+            Write-Host "[ERR] $name -> $env  (vercel exit $LASTEXITCODE)" -ForegroundColor Red
         }
     }
 }
 
-Write-Host "`nDone. Trigger a deploy: vercel deploy  (preview)  or  vercel --prod  (production)" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Done. Trigger a deploy:" -ForegroundColor Cyan
+Write-Host "  vercel deploy        (preview URL)"
+Write-Host "  vercel --prod        (production URL)"
