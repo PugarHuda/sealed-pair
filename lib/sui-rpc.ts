@@ -8,10 +8,16 @@ type RpcResponse<T> =
   | { jsonrpc: "2.0"; id: number | string; result: T }
   | { jsonrpc: "2.0"; id: number | string; error: { code: number; message: string } };
 
+// Strip a stray UTF-8 BOM and whitespace; CI/CLI pipelines sometimes
+// inject BOM when piping `Get-Content` -> env-add, which then trips
+// fetch()'s ByteString header validation downstream.
+const cleanEnv = (s: string | undefined) =>
+  s ? s.replace(/^﻿/, "").trim() : s;
+
 const KEY_FOR: Record<SuiNetwork, string | undefined> = {
-  mainnet: process.env.TATUM_API_KEY_MAINNET,
-  testnet: process.env.TATUM_API_KEY_TESTNET,
-  devnet:  process.env.TATUM_API_KEY_TESTNET, // Tatum's testnet key works for devnet too
+  mainnet: cleanEnv(process.env.TATUM_API_KEY_MAINNET),
+  testnet: cleanEnv(process.env.TATUM_API_KEY_TESTNET),
+  devnet:  cleanEnv(process.env.TATUM_API_KEY_TESTNET), // Tatum's testnet key works for devnet too
 };
 
 export class RpcError extends Error {
