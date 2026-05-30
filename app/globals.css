@@ -176,6 +176,83 @@ a { color: inherit; text-decoration: none; }
   .lp-section { padding: 64px 0; }
 }
 
+/* ============ app responsive helpers ============ */
+/* App header: stack chips when viewport too narrow for the full row */
+.app-header-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.app-header-trail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+@media (max-width: 880px) {
+  .app-header-trail { margin-left: 0; width: 100%; justify-content: flex-start; }
+  .app-header-row > nav { order: 3; width: 100%; overflow-x: auto; }
+}
+
+/* Deal room: 2-col on desktop, stacked on mobile */
+.deal-grid {
+  display: grid;
+  grid-template-columns: 1.25fr .85fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .deal-grid { grid-template-columns: 1fr; }
+  .deal-grid > div:last-child { position: static !important; }
+}
+
+/* Create screen: form + preview side by side, stacked on mobile */
+.create-grid {
+  display: grid;
+  grid-template-columns: 1.1fr .9fr;
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 880px) {
+  .create-grid { grid-template-columns: 1fr; }
+  .create-grid > div:last-child { position: static !important; }
+}
+
+/* Vault stat cards: 4 / 2 / 1 columns by viewport */
+.vault-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 28px;
+}
+@media (max-width: 880px) { .vault-stats { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .vault-stats { grid-template-columns: 1fr; } }
+
+/* Vault settled-row: collapse columns on mobile */
+.vault-row-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr auto;
+  gap: 18px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .vault-row-grid { grid-template-columns: 1fr auto; }
+  .vault-row-grid > :nth-child(2),
+  .vault-row-grid > :nth-child(3) { display: none; }
+}
+
+/* Top-nav main container width */
+.app-main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 40px 28px 80px;
+}
+@media (max-width: 640px) {
+  .app-main { padding: 24px 14px 60px; }
+}
+
 /* landing body background wash */
 .landing-body {
   background-image:

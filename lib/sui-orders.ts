@@ -227,5 +227,58 @@ export function packageStatus(): { id: string | null; configured: boolean } {
   return { id: SEALED_PAIR_PACKAGE_ID, configured: SEALED_PAIR_PACKAGE_ID !== null };
 }
 
+/* ============ Settled events for the Vault ============ */
+
+export type SettledEvent = {
+  orderId: string;
+  settledAtEpoch: number;
+  txDigest: string;
+  timestampMs?: number;
+};
+
+/**
+ * Read recent `OrderSettled` events for the deployed package via Tatum's
+ * Sui RPC gateway. Returns [] when the package hasn't been deployed yet, so
+ * the Vault renders fine in demo mode.
+ */
+export async function listSettledEvents(opts: {
+  network?: "mainnet" | "testnet" | "devnet";
+  limit?: number;
+} = {}): Promise<SettledEvent[]> {
+  if (!SEALED_PAIR_PACKAGE_ID) return [];
+
+  const eventType = `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::OrderSettled`;
+  const body = {
+    method: "suix_queryEvents",
+    params: [{ MoveEventType: eventType }, null, opts.limit ?? 50, true],
+    network: opts.network,
+  };
+
+  try {
+    const res = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { result?: QueryEventsResp };
+    const events = json.result?.data ?? [];
+    return events
+      .map<SettledEvent | null>((evt) => {
+        const p = evt.parsedJson as { order_id?: string; settled_at_epoch?: string };
+        if (!p.order_id) return null;
+        return {
+          orderId: p.order_id,
+          settledAtEpoch: Number(p.settled_at_epoch ?? 0),
+          txDigest: evt.id.txDigest,
+          timestampMs: evt.timestampMs ? Number(evt.timestampMs) : undefined,
+        };
+      })
+      .filter((e): e is SettledEvent => e !== null);
+  } catch {
+    return [];
+  }
+}
+
 // Side-effect: fmt is re-exported in case a caller wants synced formatting.
 export { fmt };

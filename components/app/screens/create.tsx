@@ -84,7 +84,7 @@ export default function CreateScreen({
         title="Seal a quote"
         sub="Fill the terms, then seal. Everything below the line gets encrypted before it ever touches the wire — takers only see the size band until they fund escrow."
       />
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr .9fr", gap: 28, alignItems: "start" }}>
+      <div className="create-grid">
         {/* form */}
         <Card pad={26} style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           <Field label="Direction">

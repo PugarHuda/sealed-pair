@@ -313,7 +313,7 @@ export default function DealScreen({
         </Badge>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.25fr .85fr", gap: 24, alignItems: "start" }}>
+      <div className="deal-grid">
         <TermsPanel order={order} revealed={revealed} revealing={revealing} revealStyle={revealStyle} />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: 20 }}>

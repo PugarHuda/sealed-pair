@@ -1,8 +1,11 @@
 # 🦭 Sealed Pair
 
+[![Sealed Pair — Move size without tipping your hand](https://sealed-pair.vercel.app/opengraph-image)](https://sealed-pair.vercel.app)
+
 > Sealed peer-to-peer OTC trading on Sui. Negotiate in the dark, settle in the open.
 
 **Live demo:** https://sealed-pair.vercel.app
+**Repo:** https://github.com/PugarHuda/sealed-pair
 
 Built for the **Tatum × Walrus hackathon** (Build on Sui, May 23 – Jun 6, 2026).
 
@@ -129,6 +132,37 @@ scripts/
 brand.md                            # Design tokens, typography, voice
 DEPLOY.md                           # Vercel deployment walkthrough
 ```
+
+---
+
+## What you'll see in the demo
+
+### Landing (`/`)
+Immersive lagoon scene with **Pip the seahorse** floating over an animated water layer cake. The headline is the trader pitch: *"Move size without tipping your hand."* Below: the problem (DEX vs OTC desk vs no audit trail), the five-step sealed-trade flow, why nobody has built this on Sui, the threat model, the stack, and a CTA into the prototype.
+
+### RFQ Board (`/app`)
+Sealed quotes from across the desk. Each card shows the size band publicly but blurs the exact amount/price behind a `▭ ▭ @ ▭ ▭` placeholder until the taker funds escrow. Every card carries its real **Walrus `blobId`** as a copyable mono pill — proof the encrypted terms exist on-chain.
+
+Header is live: **Tatum chain pill** (mainnet chain ID + advancing checkpoint, polled every 15s), **Connect Wallet** (Slush / Suiet / any Sui dApp Kit wallet), and a demo **Marina / Theo** role toggle.
+
+### Seal a quote (`/app` → "Seal a quote")
+Maker fills the form, hits the seal button, and watches the ceremony:
+1. AES-256-GCM encrypts the terms client-side
+2. Ciphertext PUTs to a public **Walrus** publisher → real `blobId` comes back
+3. Symmetric key sealed with the on-chain Move policy (Seal SDK placeholder)
+4. (When wallet connected + package deployed) `create_offer` PTB signs + executes via Tatum RPC → real testnet tx with a **SuiScan deep link**
+
+### Deal room (`/app` → tap any card)
+Theo's view of a sealed quote. Funding the refundable good-faith deposit triggers:
+1. `lock_with_escrow` PTB (splits the gas coin to exact MIST amount)
+2. Streaming policy-check log mimicking what Seal nodes verify
+3. Real Walrus blob fetch → AES-GCM decrypt → terms unblur in place
+4. `mark_revealed` PTB so indexers (Vault) see the state transition
+
+### Vault (`/app` → "Vault")
+Audit trail. Live on-chain `OrderSettled` events stream in via Tatum's `suix_queryEvents`, shown as expanded rows with cryptographic-audit checkmarks (blobId matches commitment, hash matches sealed, both legs in one PTB, Walrus blob still retrievable). Each row links straight to **SuiScan**.
+
+The four stat cards mix demo data with live on-chain counts so the dashboard reads correctly even before the Move package is deployed.
 
 ---
 

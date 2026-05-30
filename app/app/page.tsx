@@ -238,17 +238,11 @@ export default function AppPage() {
         }}
       >
         <div
-          style={{
-            maxWidth: 1280,
-            margin: "0 auto",
-            padding: "14px 28px",
-            display: "flex",
-            alignItems: "center",
-            gap: 24,
-          }}
+          className="app-header-row"
+          style={{ maxWidth: 1280, margin: "0 auto", padding: "14px 28px" }}
         >
           <Logo />
-          <nav style={{ display: "flex", gap: 6, alignItems: "center", marginLeft: 14 }}>
+          <nav style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {NAV.map((n) => {
               const on = view === n.id;
               return (
@@ -271,7 +265,7 @@ export default function AppPage() {
               );
             })}
           </nav>
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="app-header-trail">
             <NetworkPill network="mainnet" />
             <ConnectButton />
             <RoleToggle role={role} onChange={setRole} />
@@ -279,7 +273,7 @@ export default function AppPage() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "40px 28px 80px" }}>
+      <main className="app-main">
         {view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} />}
         {view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {view === "vault" && <VaultScreen settled={settled} />}

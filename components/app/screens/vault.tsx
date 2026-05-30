@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Order } from "@/lib/types";
 import { short, digest, VOLUME_STATS, fmt } from "@/lib/data";
 import { Card, Badge, Mono } from "@/components/ui/primitives";
 import { Pair } from "@/components/ui/asset";
 import Icon, { IconName } from "@/components/ui/icon";
 import { PageHead, lblS } from "@/components/app/shared";
+import { listSettledEvents, packageStatus, SettledEvent } from "@/lib/sui-orders";
 
 function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: IconName; tone?: string }) {
   return (
@@ -46,11 +47,8 @@ function SettledRow({ order }: { order: Order }) {
     <Card pad={0} style={{ overflow: "hidden" }}>
       <div
         onClick={() => setOpen((o) => !o)}
-        style={{
-          padding: "16px 22px",
-          display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr auto",
-          gap: 18, alignItems: "center", cursor: "pointer",
-        }}
+        className="vault-row-grid"
+        style={{ padding: "16px 22px", cursor: "pointer" }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Pair give={order.give} get={order.get} size={30} />
@@ -119,7 +117,28 @@ function SettledRow({ order }: { order: Order }) {
 }
 
 export default function VaultScreen({ settled }: { settled: Order[] }) {
+  // Live on-chain settled events (no-op when package not deployed).
+  const [onChainSettled, setOnChainSettled] = useState<SettledEvent[]>([]);
+  const isLive = packageStatus().configured;
+
+  useEffect(() => {
+    if (!isLive) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const events = await listSettledEvents({ network: "testnet", limit: 50 });
+      if (!cancelled) setOnChainSettled(events);
+    };
+    refresh();
+    const t = setInterval(refresh, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [isLive]);
+
   const totalVol = VOLUME_STATS.volume + settled.reduce((a, o) => a + (o.terms.counter || 0), 0);
+  const settledCount = VOLUME_STATS.settled + settled.length + onChainSettled.length;
+
   return (
     <div className="fade-up">
       <PageHead
@@ -127,22 +146,83 @@ export default function VaultScreen({ settled }: { settled: Order[] }) {
         title="The Vault"
         sub="Every settled trade leaves a permanent, verifiable record. Terms were sealed during negotiation — now they’re provable forever, with the blobId tying ciphertext to outcome."
       />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18, marginBottom: 28 }}>
+      <div className="vault-stats">
         <StatCard label="Settled volume"   value={"$" + (totalVol / 1e6).toFixed(2) + "M"} sub="all-time, on-chain"      icon="wave" />
-        <StatCard label="Trades settled"   value={String(VOLUME_STATS.settled + settled.length)} sub="atomic, zero failed legs" icon="check" tone="var(--good)" />
+        <StatCard label="Trades settled"   value={String(settledCount)}                    sub={onChainSettled.length > 0 ? `${onChainSettled.length} live · ${settledCount - onChainSettled.length} demo` : "atomic, zero failed legs"} icon="check" tone="var(--good)" />
         <StatCard label="Avg settle time"  value={VOLUME_STATS.avgSettle}                  sub="quote → finality"        icon="bolt" tone="var(--accent-2)" />
         <StatCard label="Sealed right now" value={String(VOLUME_STATS.sealed)}             sub="live on the board"       icon="lock" tone="var(--seal-glow)" />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <h3 style={{ fontSize: 17, whiteSpace: "nowrap" }}>Settlement history</h3>
-        <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>powered by Tatum Data API</span>
+        <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
+          powered by Tatum · {isLive ? "suix_queryEvents (live)" : "demo data until Move package deployed"}
+        </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {onChainSettled.map((evt) => (
+          <SettledEventRow key={evt.orderId} evt={evt} />
+        ))}
         {settled.map((o) => <SettledRow key={o.id} order={o} />)}
-        {settled.length === 0 && (
+        {settled.length === 0 && onChainSettled.length === 0 && (
           <div style={{ color: "var(--text-faint)", padding: "30px 0", textAlign: "center" }}>No settlements yet.</div>
         )}
       </div>
     </div>
+  );
+}
+
+function SettledEventRow({ evt }: { evt: SettledEvent }) {
+  return (
+    <Card pad={0} style={{ overflow: "hidden", borderColor: "var(--accent)" }}>
+      <div
+        style={{
+          padding: "16px 22px",
+          display: "grid",
+          gridTemplateColumns: "1fr auto auto",
+          gap: 18,
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              background: "color-mix(in oklab, var(--accent) 18%, transparent)",
+              color: "var(--accent)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <Icon name="check" size={16} sw={2.6} />
+          </span>
+          <div>
+            <div style={{ fontWeight: 700 }}>
+              On-chain settlement <span style={{ color: "var(--accent)", fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", marginLeft: 8, letterSpacing: ".08em" }}>LIVE</span>
+            </div>
+            <div className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 2 }}>
+              {short(evt.orderId, 10, 6)} · epoch {evt.settledAtEpoch}
+            </div>
+          </div>
+        </div>
+        <Mono label="digest" copyable>{short(evt.txDigest, 10, 6)}</Mono>
+        <a
+          href={`https://suiscan.xyz/testnet/tx/${evt.txDigest}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            color: "var(--accent)",
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          <Icon name="ext" size={14} /> SuiScan
+        </a>
+      </div>
+    </Card>
   );
 }
