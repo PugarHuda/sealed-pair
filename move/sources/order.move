@@ -227,6 +227,24 @@ public entry fun cancel_expired(order: &mut Order, ctx: &mut TxContext) {
     event::emit(OrderCancelled { order_id: object::id(order), reason: 1 });
 }
 
+// ============ Seal access policy ============
+/// Identity-based access policy callable by Sui Seal key servers.
+/// Returns `true` only when the on-chain conditions for releasing the
+/// decryption key share are met. The Seal SDK runs a PTB that invokes
+/// this function before handing the key over to the requester.
+///
+/// Policy:
+///   - The order must be LOCKED (taker has committed escrow), AND
+///   - The escrow must actually be funded, AND
+///   - The requester must be either the maker or the taker, AND
+///   - The current epoch must be before the order expiry.
+public fun seal_approve(order: &Order, requester: address, ctx: &TxContext): bool {
+    order.state == STATE_LOCKED
+        && balance::value(&order.escrow) >= order.escrow_required
+        && is_party(order, requester)
+        && tx_context::epoch(ctx) < order.expiry_epoch
+}
+
 // ============ read helpers (free, for off-chain decoding) ============
 public fun maker(order: &Order): address { order.maker }
 public fun taker(order: &Order): Option<address> { order.taker }
