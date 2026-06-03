@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Order } from "@/lib/types";
 import {
-  PERSONAS, SEED_ORDERS, SETTLED_SEED, makeOrder, digest,
+  PERSONAS, SEED_ORDERS, SETTLED_SEED, makeOrder, digest, short,
 } from "@/lib/data";
 import Mascot from "@/components/mascot";
 import Bubbles from "@/components/bubbles";
@@ -252,10 +252,17 @@ export default function AppPage() {
   const active = orders.find((o) => o.id === activeId) || null;
   const settled = orders.filter((o) => o.state === "SETTLED");
 
+  // Wallet handle in shortened form, e.g. "0xcb63…f317". Same form
+  // listOpenOrders writes into maker.handle for live on-chain orders.
+  const walletShort = account?.address ? short(account.address, 6, 4) : null;
+
   const isMineOf = (o: Order | null) => {
     if (!o) return false;
     if (typeof o.maker === "string") return o.maker === role;
-    return o.maker.handle === PERSONAS[role]?.handle;
+    if (o.maker.handle === PERSONAS[role]?.handle) return true;
+    // Treat any on-chain order posted by the connected wallet as the user's
+    // own offer — preserves the "Your offer" identity across refresh.
+    return walletShort != null && o.maker.handle === walletShort;
   };
 
   const updateOrder = (id: number, patch: Partial<Order>) =>

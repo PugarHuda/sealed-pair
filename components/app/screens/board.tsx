@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
-import { PERSONAS } from "@/lib/data";
+import { PERSONAS, short } from "@/lib/data";
 import type { Order } from "@/lib/types";
 import { Segmented, inputStyle } from "@/components/ui/primitives";
 import Icon from "@/components/ui/icon";
 import { PageHead } from "@/components/app/shared";
 import OrderCard from "@/components/app/order-card";
+import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export default function BoardScreen({
   orders, role, onOpen,
@@ -17,6 +18,12 @@ export default function BoardScreen({
   const [side, setSide] = useState("ALL");
   const [q, setQ] = useState("");
   const myHandle = PERSONAS[role]?.handle;
+  const account = useCurrentAccount();
+  // Wallet maker handles are stored as the shortened "0x…" form by
+  // listOpenOrders (lib/sui-orders.ts::eventToOrder). Match the same shape
+  // here so live on-chain orders posted by the connected wallet are tagged
+  // "Your offer" on the board, even after a hard refresh wipes local state.
+  const walletShort = account?.address ? short(account.address, 6, 4) : null;
   const filtered = orders.filter((o) => {
     if (o.state === "SETTLED") return false;
     if (side !== "ALL" && o.side !== side) return false;
@@ -67,7 +74,11 @@ export default function BoardScreen({
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
         {filtered.map((o) => {
-          const isMine = typeof o.maker === "string" ? o.maker === role : o.maker.handle === myHandle;
+          const isPersonaMine =
+            typeof o.maker === "string" ? o.maker === role : o.maker.handle === myHandle;
+          const isWalletMine =
+            walletShort != null && typeof o.maker !== "string" && o.maker.handle === walletShort;
+          const isMine = isPersonaMine || isWalletMine;
           return <OrderCard key={o.id} order={o} isMine={isMine} onOpen={onOpen} />;
         })}
       </div>
