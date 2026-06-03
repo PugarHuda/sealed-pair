@@ -270,7 +270,7 @@ export default function AppPage() {
             })}
           </nav>
           <div className="app-header-trail">
-            <NetworkPill network="mainnet" />
+            <NetworkPill />
             <ConnectButton />
             <RoleToggle role={role} onChange={setRole} />
           </div>

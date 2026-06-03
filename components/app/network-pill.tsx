@@ -2,12 +2,19 @@
 // Shows the current Sui checkpoint number so judges can see the gateway is live.
 "use client";
 import { useEffect, useState } from "react";
+import { SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
 
 type Health =
   | { ok: true; networkName: string; chainId: string; checkpoint: string; latencyMs: number }
   | { ok: false; error: string };
 
-export default function NetworkPill({ network = "mainnet" as "mainnet" | "testnet" | "devnet" }) {
+type NetworkName = "mainnet" | "testnet" | "devnet";
+
+// Default the pill to the same network the rest of the app talks to. Showing
+// mainnet checkpoint while every actual interaction is on devnet was confusing.
+export default function NetworkPill({
+  network = SUI_NETWORK_FOR_EVENTS as NetworkName,
+}: { network?: NetworkName } = {}) {
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [data, setData] = useState<Health | null>(null);
 

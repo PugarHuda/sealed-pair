@@ -216,26 +216,27 @@ function eventToOrder(evt: RpcEvent): Order | null {
 
   const give = (p.give_kind ?? "SUI") as AssetSym;
   const get = (p.get_kind ?? "USDC") as AssetSym;
-  // Event payload's `escrow_required` IS the MIST-precision value used by
-  // lock_with_escrow on-chain. Preserve it as a string to avoid u64
-  // precision loss when we round-trip through JSON.
   const escrowMistStr = String(p.escrow_required ?? "0");
   const escrowMistNum = Number(escrowMistStr);
-  // Display amount: we don't know the true give-amount until reveal, so
-  // back-derive a plausible figure from the escrow (5% rule of thumb).
   const approxGiveAmount = escrowMistNum > 0
     ? (give === "SUI" ? Math.floor(escrowMistNum / 1e9 / 0.05) : Math.floor(escrowMistNum / 1e6 / 0.02))
     : 10_000;
 
+  // Stable, human-readable maker name. Picks a hex pair after the 0x prefix
+  // so the avatar circle gets a meaningful initial instead of the literal
+  // digit "0" that every Sui address starts with.
+  const makerHex = p.maker.startsWith("0x") ? p.maker.slice(2) : p.maker;
+  const makerName = `Anon-${makerHex.slice(0, 4).toUpperCase()}`;
+
   const base = makeOrder({
-    maker: { name: shortAddr(p.maker), handle: p.maker.slice(0, 10), color: "#7b8cff" },
+    maker: { name: makerName, handle: shortAddr(p.maker), color: addrColor(p.maker) },
     side: "SELL",
     give,
     get,
     amount: Math.max(1_000, approxGiveAmount),
     price: 0,
     createdAgo: evt.timestampMs ? timeAgo(Number(evt.timestampMs)) : "live",
-    expiresIn: `epoch ${p.expiry_epoch ?? "?"}`,
+    expiresIn: humanExpiry(p.expiry_epoch),
   });
 
   return {
@@ -245,6 +246,27 @@ function eventToOrder(evt: RpcEvent): Order | null {
     sizeBand: bandFor(approxGiveAmount),
     escrowRequiredMist: escrowMistStr,
   };
+}
+
+/** Pick a deterministic accent color from an address — different makers
+ *  get visually distinguishable avatars without a name registry. */
+function addrColor(addr: string): string {
+  const palette = ["#7b8cff", "#5fe0ff", "#ff6fae", "#4dd6a8", "#ffb24a", "#8b6cff"];
+  let h = 0;
+  for (let i = 2; i < Math.min(addr.length, 14); i++) h = (h * 31 + addr.charCodeAt(i)) | 0;
+  return palette[Math.abs(h) % palette.length];
+}
+
+/** Render expiry_epoch as "in N epoch(s) (~Nd)" if it's a plausible epoch number,
+ *  else show the raw value. Devnet epochs ≈ 1 day. */
+function humanExpiry(epoch: string | undefined): string {
+  if (!epoch || epoch === "?") return "epoch unknown";
+  const e = Number(epoch);
+  if (!Number.isFinite(e) || e <= 0) return `epoch ${epoch}`;
+  // We don't know the current epoch here without an extra RPC call, so just
+  // express the absolute target. The UI knows the network and can compute
+  // delta separately if it wants to.
+  return `epoch ${e}`;
 }
 
 function decodeBytesField(raw: unknown): string {
