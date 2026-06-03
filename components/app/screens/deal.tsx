@@ -202,49 +202,55 @@ export default function DealScreen({
     setDecryptFailed(false);
     setPhase("funding");
 
-    // ---- Real on-chain lock_with_escrow (when prerequisites met) ----
-    // Idempotent: if we already have a lockTxDigest, the lock landed in a
-    // previous attempt. Skip directly to mark_revealed instead of double-
-    // locking (which would abort with EWrongState because state != OPEN).
-    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID && !lockTxDigest) {
+    // ---- Atomic lock + mark_revealed in ONE PTB ----
+    // Why combined: doing them as two separate signAndExecute calls hits a
+    // race where Slush's dry-run for mark_revealed runs against a fullnode
+    // that hasn't seen the lock yet, so the assert state==LOCKED fails with
+    // a MoveAbort 0 before the user even gets a chance to sign. Bundling
+    // both Move calls into one PTB makes state transitions sequential
+    // within the same tx, so the dry-run simulates lock → reveal cleanly
+    // and only one wallet popup appears. If a previous attempt already
+    // landed the lock (lockTxDigest set from prior retry), we omit the lock
+    // step and only fire mark_revealed to avoid a double-lock abort.
+    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
       try {
         const tx = new Transaction();
-        // Prefer the on-chain MIST amount captured at create_offer time;
-        // fall back to the deterministic formula for demo orders.
-        const escrowMist = order.escrowRequiredMist
-          ? BigInt(order.escrowRequiredMist)
-          : computeEscrowMist(order.terms, order.give);
-        const [escrowCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(escrowMist)]);
+        if (!lockTxDigest) {
+          const escrowMist = order.escrowRequiredMist
+            ? BigInt(order.escrowRequiredMist)
+            : computeEscrowMist(order.terms, order.give);
+          const [escrowCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(escrowMist)]);
+          tx.moveCall({
+            target: `${SEALED_PAIR_PACKAGE_ID}::order::lock_with_escrow`,
+            arguments: [tx.object(order.orderObj), escrowCoin, tx.object("0x6")],
+          });
+        }
         tx.moveCall({
-          target: `${SEALED_PAIR_PACKAGE_ID}::order::lock_with_escrow`,
-          arguments: [tx.object(order.orderObj), escrowCoin, tx.object("0x6")],
+          target: `${SEALED_PAIR_PACKAGE_ID}::order::mark_revealed`,
+          arguments: [tx.object(order.orderObj)],
         });
         const result = await signAndExecute({ transaction: tx });
-        setLockTxDigest(result.digest);
-        // Wait for the lock to be observable across fullnodes before we
-        // attempt the follow-up mark_revealed read+write. Skipping this
-        // causes a MoveAbort EWrongState because the next RPC may still
-        // see state == OPEN.
+        if (!lockTxDigest) setLockTxDigest(result.digest);
+        // Wait so the next read (terms display, future settle) sees REVEALED.
         try {
           await suiClient.waitForTransaction({ digest: result.digest, options: { showEffects: true } });
         } catch {
-          // Even if the wait times out, the tx is still broadcast — fall
-          // through and let mark_revealed surface any real error.
+          /* propagation timeout is non-fatal */
         }
       } catch (e) {
-        // Lock is the one path where a chain failure must be surfaced —
-        // proceeding to reveal/settle without a real escrow is misleading.
-        const msg = e instanceof Error ? e.message : "Lock failed";
+        const msg = e instanceof Error ? e.message : "Lock + reveal failed";
         const hint = msg.includes("abort code: 0")
-          ? "Order is already past OPEN state — pick a different unlocked card."
+          ? "Order isn't in a state we can act on — already locked by someone else, already revealed, or expired. Pick a different unlocked card."
           : msg.includes("abort code: 1")
           ? "Escrow amount doesn't match what the maker locked in."
-          : msg.slice(0, 140);
+          : msg.includes("abort code: 2")
+          ? "Your wallet isn't a party to this order — only maker or taker can reveal."
+          : msg.slice(0, 160);
         setFundError(hint);
         setPhase("sealed");
         return;
       }
-    } else if (!onChainEnabled) {
+    } else {
       await new Promise((r) => setTimeout(r, 1300));
     }
 
@@ -295,36 +301,9 @@ export default function DealScreen({
     }
     if (!foundKey) setDecryptFailed(true);
 
-    // On-chain mark_revealed — required for the subsequent settle PTB to pass
-    // (Move asserts state == REVEALED). If this fails we must NOT advance the
-    // phase, otherwise the user sees a "reveal" they can't settle.
-    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
-      try {
-        const tx2 = new Transaction();
-        tx2.moveCall({
-          target: `${SEALED_PAIR_PACKAGE_ID}::order::mark_revealed`,
-          arguments: [tx2.object(order.orderObj)],
-        });
-        const revealResult = await signAndExecute({ transaction: tx2 });
-        try {
-          await suiClient.waitForTransaction({ digest: revealResult.digest, options: { showEffects: true } });
-        } catch {
-          /* propagation wait failure is non-fatal */
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "mark_revealed failed";
-        // Decode the common abort path so users see a meaningful hint
-        // instead of "MoveAbort in 1st command, abort code: 0".
-        const hint = msg.includes("abort code: 0")
-          ? "Order state isn't LOCKED (already revealed, or lock didn't land). Try refresh."
-          : msg.includes("abort code: 2")
-          ? "Wallet isn't a party to this order — only maker or taker can reveal."
-          : msg.slice(0, 120);
-        setFundError(`Reveal blocked — ${hint}`);
-        setPhase("sealed");
-        return;
-      }
-    }
+    // (mark_revealed already executed atomically in the same PTB as the
+    // lock above. No second signAndExecute needed — that was the source of
+    // the cross-fullnode race condition.)
 
     // Match the existing policy-check animation runtime (~2.5s of streaming lines)
     await new Promise((r) => setTimeout(r, 2600));
