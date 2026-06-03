@@ -179,7 +179,14 @@ type QueryEventsResp = {
 };
 
 /**
- * Fetch the most recent `OrderPosted` events for the deployed package.
+ * Fetch the most recent `OrderPosted` events for the deployed package,
+ * then back-check the current on-chain state of each Order and drop anything
+ * that's no longer OPEN (already locked, revealed, settled, or cancelled).
+ * Without this filter, the board lists orders the user can't actually act
+ * on — clicking one only surfaces the abort code 0 (EWrongState) after a
+ * wallet popup, which is a terrible UX.
+ *
+ * Two RPC calls per refresh: one suix_queryEvents + one sui_multiGetObjects.
  * Returns Orders normalised to the app's frontend type so they slot straight
  * into the RFQ board.
  */
@@ -204,7 +211,36 @@ export async function listOpenOrders(opts: {
   if (!res.ok) return [];
   const json = (await res.json()) as { result?: QueryEventsResp };
   const events = json.result?.data ?? [];
-  return events.map(eventToOrder).filter((o): o is Order => o !== null);
+  const candidates = events.map(eventToOrder).filter((o): o is Order => o !== null);
+  if (candidates.length === 0) return [];
+
+  // Single batched read to learn each Order's current state. If this call
+  // fails for any reason we degrade to returning the unfiltered list — a
+  // stale board with one bad row is still better than an empty board.
+  try {
+    const stateRes = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "sui_multiGetObjects",
+        params: [candidates.map((o) => o.orderObj), { showContent: true }],
+        network: opts.network,
+      }),
+    });
+    if (!stateRes.ok) return candidates;
+    const stateJson = (await stateRes.json()) as {
+      result?: Array<{ data?: { content?: { fields?: Record<string, unknown> } } }>;
+    };
+    const items = stateJson.result ?? [];
+    return candidates.filter((_, i) => {
+      const fields = items[i]?.data?.content?.fields;
+      if (!fields) return false;          // object missing → it was deleted/never existed
+      const state = Number(fields.state ?? -1);
+      return state === 0;                  // 0 = OPEN per Move module
+    });
+  } catch {
+    return candidates;
+  }
 }
 
 function eventToOrder(evt: RpcEvent): Order | null {
