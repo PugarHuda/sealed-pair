@@ -203,7 +203,10 @@ export default function DealScreen({
     setPhase("funding");
 
     // ---- Real on-chain lock_with_escrow (when prerequisites met) ----
-    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID) {
+    // Idempotent: if we already have a lockTxDigest, the lock landed in a
+    // previous attempt. Skip directly to mark_revealed instead of double-
+    // locking (which would abort with EWrongState because state != OPEN).
+    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID && !lockTxDigest) {
       try {
         const tx = new Transaction();
         // Prefer the on-chain MIST amount captured at create_offer time;
@@ -232,11 +235,16 @@ export default function DealScreen({
         // Lock is the one path where a chain failure must be surfaced —
         // proceeding to reveal/settle without a real escrow is misleading.
         const msg = e instanceof Error ? e.message : "Lock failed";
-        setFundError(msg);
+        const hint = msg.includes("abort code: 0")
+          ? "Order is already past OPEN state — pick a different unlocked card."
+          : msg.includes("abort code: 1")
+          ? "Escrow amount doesn't match what the maker locked in."
+          : msg.slice(0, 140);
+        setFundError(hint);
         setPhase("sealed");
         return;
       }
-    } else {
+    } else if (!onChainEnabled) {
       await new Promise((r) => setTimeout(r, 1300));
     }
 
