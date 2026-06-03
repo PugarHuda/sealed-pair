@@ -27,6 +27,50 @@ const NAV: { id: View; label: string; icon: IconName }[] = [
   { id: "vault",  label: "Vault",        icon: "shield" },
 ];
 
+// Placeholder shown in the static HTML / pre-hydration paint. Replaces the
+// previous behaviour of statically rendering seed orders, which created a
+// visible "back to initial" flash on hard refresh.
+function BoardSkeleton() {
+  return (
+    <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px 28px" }}>
+      <div
+        style={{
+          width: 220, height: 14, borderRadius: 7,
+          background: "var(--surface-3)",
+          marginBottom: 14, opacity: 0.55,
+        }}
+      />
+      <div
+        style={{
+          width: 360, height: 30, borderRadius: 8,
+          background: "var(--surface-3)",
+          marginBottom: 26, opacity: 0.55,
+        }}
+      />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+          gap: 20,
+        }}
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              height: 220,
+              borderRadius: "var(--r-md)",
+              background: "var(--surface)",
+              border: "1px solid var(--border-soft)",
+              opacity: 0.55,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Logo({ onHome }: { onHome: () => void }) {
   // In-app click handler instead of <Link href="/"> — clicking the logo
   // inside /app should land back on the RFQ Board without nuking state.
@@ -357,11 +401,22 @@ export default function AppPage() {
         </div>
       </header>
 
-      <main className="app-main">
-        {view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} />}
-        {view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
-        {view === "vault" && <VaultScreen settled={settled} />}
-        {view === "deal" && active && (
+      {/* Main content renders only AFTER client hydration. Pre-hydration we
+          paint a neutral skeleton so the static HTML never shows the seed-only
+          board — that was the "back to initial" flash during refresh.
+          Snapping from skeleton → real content reads as "loading complete",
+          not "page regressed". */}
+      <main
+        className="app-main"
+        style={{
+          opacity: hydrated ? 1 : 0,
+          transition: "opacity .12s ease-out",
+        }}
+      >
+        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} />}
+        {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
+        {hydrated && view === "vault" && <VaultScreen settled={settled} />}
+        {hydrated && view === "deal" && active && (
           <DealScreen
             order={active}
             role={role}
@@ -373,6 +428,7 @@ export default function AppPage() {
             onBack={(to) => (to === "vault" ? goNav("vault") : goNav("board"))}
           />
         )}
+        {!hydrated && <BoardSkeleton />}
       </main>
 
       {sealDraft && <SealCeremony order={sealDraft} onDone={finishSeal} onClose={() => setSealDraft(null)} />}
