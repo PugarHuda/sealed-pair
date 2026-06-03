@@ -5,6 +5,7 @@
 import { CSSProperties } from "react";
 import {
   ConnectModal,
+  useAutoConnectWallet,
   useCurrentAccount,
   useDisconnectWallet,
   useCurrentWallet,
@@ -48,6 +49,35 @@ export default function ConnectButton() {
   const account = useCurrentAccount();
   const { currentWallet } = useCurrentWallet();
   const { mutate: disconnect } = useDisconnectWallet();
+  // While dApp Kit's autoConnect is still trying to reattach a previously
+  // approved wallet, account is null even though it'll likely be filled in
+  // ~200-400ms later. Rendering "Connect wallet" during that window causes
+  // a visible flash on every page load. We show a neutral pill instead.
+  const autoConnect = useAutoConnectWallet();
+
+  if (!account && autoConnect === "idle") {
+    return (
+      <div
+        style={{
+          ...connectedStyle,
+          opacity: 0.55,
+          background: "var(--surface-2)",
+          color: "var(--text-faint)",
+          padding: "5px 12px",
+        }}
+        aria-busy="true"
+      >
+        <span
+          style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: "var(--text-faint)",
+            opacity: 0.7,
+          }}
+        />
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>connecting…</span>
+      </div>
+    );
+  }
 
   if (!account) {
     return (

@@ -16,7 +16,7 @@ import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
-import { useCurrentAccount } from "@mysten/dapp-kit";
+import { useAutoConnectWallet, useCurrentAccount } from "@mysten/dapp-kit";
 
 type Role = "marina" | "theo";
 type View = "board" | "create" | "vault" | "deal";
@@ -154,6 +154,10 @@ export default function AppPage() {
   // pre-hydration flash of the toggle doesn't appear and then vanish.
   const [hydrated, setHydrated] = useState(false);
   const account = useCurrentAccount();
+  // While dApp Kit's autoConnect is in 'idle' we don't yet know whether the
+  // user has a saved wallet. Treat that window as "wallet unknown" so we
+  // don't flash the persona toggle before the wallet resolves.
+  const autoConnect = useAutoConnectWallet();
 
   // Hydrate cached live orders on mount — runs once, syncs with seed state.
   useEffect(() => {
@@ -342,10 +346,13 @@ export default function AppPage() {
             <ConnectButton />
             {/* Persona toggle is a pre-wallet demo artifact. Once a real
                 wallet is connected, your identity comes from the address —
-                showing the toggle is misleading. Gate on `hydrated` so we
-                don't flash the toggle for a frame before useCurrentAccount
-                resolves on initial mount. */}
-            {hydrated && !account && <RoleToggle role={role} onChange={setRole} />}
+                showing the toggle is misleading. Gate on `hydrated` AND on
+                autoConnect being settled, so we don't paint the toggle
+                during the ~200-500ms while dApp Kit re-attaches a saved
+                wallet (account is briefly null during that window). */}
+            {hydrated && autoConnect !== "idle" && !account && (
+              <RoleToggle role={role} onChange={setRole} />
+            )}
           </div>
         </div>
       </header>
