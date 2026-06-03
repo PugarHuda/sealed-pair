@@ -14,7 +14,7 @@ import DealScreen from "@/components/app/screens/deal";
 import VaultScreen from "@/components/app/screens/vault";
 import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import NetworkPill from "@/components/app/network-pill";
-import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
+import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
 import { useAutoConnectWallet, useCurrentAccount } from "@mysten/dapp-kit";
 
@@ -197,6 +197,7 @@ export default function AppPage() {
   // chrome (persona toggle) hidden. That flips on after hydration so a brief
   // pre-hydration flash of the toggle doesn't appear and then vanish.
   const [hydrated, setHydrated] = useState(false);
+  const [repMap, setRepMap] = useState<Map<string, MakerStats>>(() => new Map());
   const account = useCurrentAccount();
   // While dApp Kit's autoConnect is in 'idle' we don't yet know whether the
   // user has a saved wallet. Treat that window as "wallet unknown" so we
@@ -248,6 +249,27 @@ export default function AppPage() {
     const t = setInterval(refreshLiveOrders, 30_000);
     return () => clearInterval(t);
   }, [refreshLiveOrders]);
+
+  // Maker reputation poll — refreshes alongside the board. Independent of
+  // orders polling so a hiccup in one doesn't kill the other.
+  useEffect(() => {
+    if (!packageStatus().configured) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const next = await fetchMakerReputation(SUI_NETWORK_FOR_EVENTS, 100);
+        if (!cancelled) setRepMap(next);
+      } catch {
+        /* keep last good */
+      }
+    };
+    tick();
+    const t = setInterval(tick, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
 
   const active = orders.find((o) => o.id === activeId) || null;
   const settled = orders.filter((o) => o.state === "SETTLED");
@@ -420,7 +442,7 @@ export default function AppPage() {
           transition: "opacity .12s ease-out",
         }}
       >
-        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} />}
+        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {hydrated && view === "vault" && <VaultScreen settled={settled} />}
         {hydrated && view === "deal" && active && (

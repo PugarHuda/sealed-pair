@@ -466,5 +466,41 @@ export async function enrichSettledEvents(
   }
 }
 
+/* ============ Maker reputation ============ */
+
+/** Per-maker rollup derived from past OrderSettled events. */
+export type MakerStats = {
+  settles: number;       // total settled trades signed by this maker
+  lastEpoch: number;     // most recent settle epoch
+  asMakerAddr: string;   // canonical full address (lookup key fallback)
+};
+
+/**
+ * Build a reputation Map keyed by BOTH the shortened "0xabcd…wxyz" form
+ * (the same form stored in Order.maker.handle for live rows) AND the full
+ * 0x… address — so callers can look up by either. Two RPC calls:
+ * suix_queryEvents (settled list) + sui_multiGetObjects (maker per order).
+ */
+export async function fetchMakerReputation(
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+  limit = 100,
+): Promise<Map<string, MakerStats>> {
+  const events = await listSettledEvents({ network, limit });
+  if (events.length === 0) return new Map();
+  const enriched = await enrichSettledEvents(events, network);
+  const map = new Map<string, MakerStats>();
+  for (const t of enriched) {
+    if (!t.maker) continue;
+    const fullKey = t.maker;
+    const shortKey = shortAddr(t.maker);
+    const existing = map.get(fullKey) ?? { settles: 0, lastEpoch: 0, asMakerAddr: t.maker };
+    existing.settles += 1;
+    if (t.settledAtEpoch > existing.lastEpoch) existing.lastEpoch = t.settledAtEpoch;
+    map.set(fullKey, existing);
+    map.set(shortKey, existing);    // alias: short → same stats record
+  }
+  return map;
+}
+
 // Side-effect: fmt is re-exported in case a caller wants synced formatting.
 export { fmt };

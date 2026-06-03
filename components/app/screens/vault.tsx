@@ -14,6 +14,8 @@ import {
   SUI_NETWORK_FOR_EVENTS,
   SUISCAN_HOST,
 } from "@/lib/sui-orders";
+import { Segmented } from "@/components/ui/primitives";
+import { useCurrentAccount } from "@mysten/dapp-kit";
 
 function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: IconName; tone?: string }) {
   return (
@@ -51,7 +53,20 @@ export default function VaultScreen({ settled }: { settled: Order[] }) {
   // Live on-chain settled trades, enriched with Order content so they
   // render with the same columns as the demo rows below.
   const [liveTrades, setLiveTrades] = useState<SettledTrade[]>([]);
+  const [scope, setScope] = useState<"ALL" | "MINE">("ALL");
   const isLive = packageStatus().configured;
+  const account = useCurrentAccount();
+  // Settlement rows treat the user as "mine" if either the maker (full
+  // address in SettledTrade.maker) or the taker matches the connected
+  // wallet. Demo Order rows are matched via the short maker.handle.
+  const walletAddr = account?.address ?? null;
+  const walletShort = walletAddr ? short(walletAddr, 6, 4) : null;
+  const isMineTrade = (t: SettledTrade & { code?: string }) => {
+    if (!walletAddr && !walletShort) return false;
+    if (walletAddr && (t.maker === walletAddr || t.taker === walletAddr)) return true;
+    if (walletShort && t.maker === walletShort) return true;
+    return false;
+  };
 
   useEffect(() => {
     if (!isLive) return;
@@ -72,6 +87,13 @@ export default function VaultScreen({ settled }: { settled: Order[] }) {
 
   const totalVol = VOLUME_STATS.volume + settled.reduce((a, o) => a + (o.terms.counter || 0), 0);
   const settledCount = VOLUME_STATS.settled + settled.length + liveTrades.length;
+  const mineLiveTrades = liveTrades.filter(isMineTrade);
+  const mineDemoTrades = settled.map(fromOrder).filter(isMineTrade);
+  const mineCount = mineLiveTrades.length + mineDemoTrades.length;
+  const liveTradesToShow = scope === "MINE" ? mineLiveTrades : liveTrades;
+  const settledToShow = scope === "MINE"
+    ? settled.filter((o) => isMineTrade(fromOrder(o)))
+    : settled;
 
   return (
     <div className="fade-up">
@@ -91,12 +113,26 @@ export default function VaultScreen({ settled }: { settled: Order[] }) {
         <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
           powered by Tatum · {isLive ? "suix_queryEvents + sui_multiGetObjects (live)" : "demo data until Move package deployed"}
         </span>
+        {walletAddr && (
+          <div style={{ marginLeft: "auto" }}>
+            <Segmented
+              value={scope}
+              onChange={(v) => setScope(v as "ALL" | "MINE")}
+              options={[
+                { value: "ALL", label: "All trades" },
+                { value: "MINE", label: mineCount > 0 ? `Mine · ${mineCount}` : "Mine" },
+              ]}
+            />
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {liveTrades.map((t) => <UnifiedRow key={t.orderId} trade={t} live />)}
-        {settled.map((o) => <UnifiedRow key={o.id} trade={fromOrder(o)} />)}
-        {settled.length === 0 && liveTrades.length === 0 && (
-          <div style={{ color: "var(--text-faint)", padding: "30px 0", textAlign: "center" }}>No settlements yet.</div>
+        {liveTradesToShow.map((t) => <UnifiedRow key={t.orderId} trade={t} live />)}
+        {settledToShow.map((o) => <UnifiedRow key={o.id} trade={fromOrder(o)} />)}
+        {settledToShow.length === 0 && liveTradesToShow.length === 0 && (
+          <div style={{ color: "var(--text-faint)", padding: "30px 0", textAlign: "center" }}>
+            {scope === "MINE" ? "You haven't settled any trades yet on this wallet." : "No settlements yet."}
+          </div>
         )}
       </div>
     </div>

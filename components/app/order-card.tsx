@@ -1,5 +1,6 @@
 "use client";
 import type { Order } from "@/lib/types";
+import type { MakerStats } from "@/lib/sui-orders";
 import { short } from "@/lib/data";
 import { Badge, Btn, Card, Mono } from "@/components/ui/primitives";
 import { Pair } from "@/components/ui/asset";
@@ -7,11 +8,12 @@ import Icon from "@/components/ui/icon";
 import { MakerTag, Ghost } from "./shared";
 
 export default function OrderCard({
-  order, isMine, onOpen,
+  order, isMine, onOpen, rep,
 }: {
   order: Order;
   isMine: boolean;
   onOpen: (o: Order) => void;
+  rep?: MakerStats | null;
 }) {
   const stateBadge = {
     OPEN:     <Badge tone="open"   icon="lock">Sealed</Badge>,
@@ -37,8 +39,34 @@ export default function OrderCard({
           Your offer
         </div>
       )}
-      <div style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <MakerTag maker={order.maker} />
+      <div style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <MakerTag maker={order.maker} />
+          {/* Reputation chip — only renders when this maker has at least one
+              prior on-chain settlement. Hidden for first-timers so it doesn't
+              read as "zero reputation, distrust this maker". */}
+          {rep && rep.settles > 0 && (
+            <span
+              title={`${rep.settles} settled trade${rep.settles === 1 ? "" : "s"} on-chain · last @ epoch ${rep.lastEpoch}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+                fontWeight: 700,
+                color: "var(--good)",
+                background: "color-mix(in oklab, var(--good) 14%, transparent)",
+                border: "1px solid color-mix(in oklab, var(--good) 30%, transparent)",
+                padding: "2px 8px",
+                borderRadius: 99,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Icon name="check" size={11} sw={2.8} />
+              {rep.settles}× settled
+            </span>
+          )}
+        </div>
         {!isMine && stateBadge}
       </div>
       <div style={{ padding: "4px 20px 18px", borderBottom: "1px solid var(--border-soft)" }}>
