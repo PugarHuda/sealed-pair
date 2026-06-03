@@ -194,9 +194,11 @@ export default function DealScreen({
   const onChainEnabled = !!(account && SEALED_PAIR_PACKAGE_ID && order.orderObj.startsWith("0x") && order.orderObj.length === 66);
 
   const [fundError, setFundError] = useState<string | null>(null);
+  const [decryptFailed, setDecryptFailed] = useState(false);
 
   const fund = async () => {
     setFundError(null);
+    setDecryptFailed(false);
     setPhase("funding");
 
     // ---- Real on-chain lock_with_escrow (when prerequisites met) ----
@@ -227,17 +229,28 @@ export default function DealScreen({
       await new Promise((r) => setTimeout(r, 1300));
     }
 
+    // Resolve the on-chain taker address: prefer the real connected wallet,
+    // fall back to the demo persona only when the dapp is in mock mode.
+    const takerName = account?.address ? "You" : PERSONAS[role].name;
+    const takerAddr = account?.address ?? PERSONAS[role].addr;
+
     onUpdate(order.id, {
       state: "LOCKED",
-      escrow: { ...order.escrow, funded: true, by: PERSONAS[role].name, byAddr: PERSONAS[role].addr },
+      escrow: { ...order.escrow, funded: true, by: takerName, byAddr: takerAddr },
     });
     setPhase("revealing");
 
     // ---- Real Walrus fetch + AES-GCM decrypt (when key available) ----
+    // The key only lives in this browser's sessionStorage when this session
+    // sealed the order. Pre-existing CLI-seeded orders will hit the no-key
+    // branch and we surface that as decryptFailed (UI keeps real on-chain
+    // state but warns that displayed terms are placeholders).
     let revealPatch: Partial<Order> = { revealed: true, state: "REVEALED" };
+    let foundKey = false;
     try {
       const key = await loadKey(order.blobId);
       if (key) {
+        foundKey = true;
         const res = await fetch(`/api/walrus/blob/${encodeURIComponent(order.blobId)}`, { cache: "force-cache" });
         if (res.ok) {
           const buf = await res.arrayBuffer();
@@ -261,6 +274,7 @@ export default function DealScreen({
     } catch (e) {
       console.warn("[reveal] decrypt skipped:", e);
     }
+    if (!foundKey) setDecryptFailed(true);
 
     // On-chain mark_revealed — required for the subsequent settle PTB to pass
     // (Move asserts state == REVEALED). If this fails we must NOT advance the
@@ -434,7 +448,37 @@ export default function DealScreen({
               {order.escrow.funded && (
                 <Mono label="escrow by" copyable>{order.escrow.byAddr || PERSONAS[role].addr}</Mono>
               )}
+              {lockTxDigest && (
+                <a
+                  href={`https://suiscan.xyz/devnet/tx/${lockTxDigest}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: "var(--accent)", textDecoration: "underline", marginTop: 6, fontFamily: "var(--font-mono)" }}
+                >
+                  lock tx: {short(lockTxDigest, 10, 6)} ↗
+                </a>
+              )}
             </div>
+            {decryptFailed && revealed && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: "10px 12px",
+                  background: "color-mix(in oklab, var(--warn) 14%, transparent)",
+                  border: "1px solid var(--warn)",
+                  borderRadius: "var(--r-sm)",
+                  color: "var(--warn)",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                }}
+              >
+                <b>Lock + reveal are real on-chain</b> — see the lock tx above. But the AES key
+                for this seeded order lives in another session's storage, so the terms shown are
+                placeholders (price/counter rendered as 0). Real decrypt works for orders you
+                seal yourself in this browser via "Seal a quote".
+              </div>
+            )}
           </Card>
         </div>
       </div>
