@@ -97,7 +97,7 @@ public struct OrderCancelled has copy, drop {
 /// Post a sealed quote. The blob id is the Walrus commitment to the encrypted terms.
 ///
 /// Note: we share the Order so any future taker can discover + fund escrow.
-public entry fun create_offer(
+public fun create_offer(
     blob_id: vector<u8>,
     policy_id: ID,
     give_kind: vector<u8>,
@@ -137,7 +137,7 @@ public entry fun create_offer(
 // ============ lock with escrow ============
 /// Taker funds escrow to satisfy the Seal policy, transitioning OPEN -> LOCKED.
 /// The deposited Coin<SUI> must exactly match `escrow_required`.
-public entry fun lock_with_escrow(
+public fun lock_with_escrow(
     order: &mut Order,
     payment: Coin<SUI>,
     clock: &Clock,
@@ -166,7 +166,7 @@ public entry fun lock_with_escrow(
 // ============ mark revealed ============
 /// Off-chain Seal released the key; either party signals that on-chain so
 /// indexers and the settle step can advance. State transitions LOCKED -> REVEALED.
-public entry fun mark_revealed(order: &mut Order, ctx: &mut TxContext) {
+public fun mark_revealed(order: &mut Order, ctx: &mut TxContext) {
     assert!(order.state == STATE_LOCKED, EWrongState);
     let sender = tx_context::sender(ctx);
     assert!(is_party(order, sender), ENotAuthorized);
@@ -178,7 +178,7 @@ public entry fun mark_revealed(order: &mut Order, ctx: &mut TxContext) {
 // ============ settle ============
 /// Atomic settlement: hand the escrow over to the maker as the agreed payment.
 /// V1 is escrow-only — V2 will accept a maker `Coin<GIVE>` to atomically swap.
-public entry fun settle(order: &mut Order, ctx: &mut TxContext) {
+public fun settle(order: &mut Order, ctx: &mut TxContext) {
     assert!(order.state == STATE_REVEALED, EWrongState);
     let sender = tx_context::sender(ctx);
     assert!(is_party(order, sender), ENotAuthorized);
@@ -196,7 +196,7 @@ public entry fun settle(order: &mut Order, ctx: &mut TxContext) {
 
 // ============ cancellation paths ============
 /// Maker withdraws an OPEN quote. No escrow has been posted yet.
-public entry fun cancel_open(order: &mut Order, ctx: &mut TxContext) {
+public fun cancel_open(order: &mut Order, ctx: &mut TxContext) {
     assert!(order.state == STATE_OPEN, EWrongState);
     assert!(tx_context::sender(ctx) == order.maker, ENotAuthorized);
 
@@ -206,7 +206,7 @@ public entry fun cancel_open(order: &mut Order, ctx: &mut TxContext) {
 
 /// Anyone can trigger expiry cleanup after the deadline. If the order was
 /// LOCKED, escrow returns to the taker.
-public entry fun cancel_expired(order: &mut Order, ctx: &mut TxContext) {
+public fun cancel_expired(order: &mut Order, ctx: &mut TxContext) {
     assert!(tx_context::epoch(ctx) >= order.expiry_epoch, ENotExpired);
     assert!(
         order.state == STATE_OPEN || order.state == STATE_LOCKED,
