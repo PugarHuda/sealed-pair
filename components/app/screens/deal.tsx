@@ -8,7 +8,7 @@ import Icon from "@/components/ui/icon";
 import Mascot from "@/components/mascot";
 import { MakerTag, lblS, valS } from "@/components/app/shared";
 import { decryptText, loadKey } from "@/lib/crypto";
-import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist } from "@/lib/sui-orders";
 
@@ -190,6 +190,7 @@ export default function DealScreen({
   // sleeps when wallet not connected or NEXT_PUBLIC_SEALED_PAIR_PACKAGE_ID
   // hasn't been set yet.
   const account = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const onChainEnabled = !!(account && SEALED_PAIR_PACKAGE_ID && order.orderObj.startsWith("0x") && order.orderObj.length === 66);
 
@@ -217,6 +218,16 @@ export default function DealScreen({
         });
         const result = await signAndExecute({ transaction: tx });
         setLockTxDigest(result.digest);
+        // Wait for the lock to be observable across fullnodes before we
+        // attempt the follow-up mark_revealed read+write. Skipping this
+        // causes a MoveAbort EWrongState because the next RPC may still
+        // see state == OPEN.
+        try {
+          await suiClient.waitForTransaction({ digest: result.digest, options: { showEffects: true } });
+        } catch {
+          // Even if the wait times out, the tx is still broadcast — fall
+          // through and let mark_revealed surface any real error.
+        }
       } catch (e) {
         // Lock is the one path where a chain failure must be surfaced —
         // proceeding to reveal/settle without a real escrow is misleading.
@@ -286,10 +297,22 @@ export default function DealScreen({
           target: `${SEALED_PAIR_PACKAGE_ID}::order::mark_revealed`,
           arguments: [tx2.object(order.orderObj)],
         });
-        await signAndExecute({ transaction: tx2 });
+        const revealResult = await signAndExecute({ transaction: tx2 });
+        try {
+          await suiClient.waitForTransaction({ digest: revealResult.digest, options: { showEffects: true } });
+        } catch {
+          /* propagation wait failure is non-fatal */
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "mark_revealed failed";
-        setFundError(`Reveal blocked — ${msg.slice(0, 100)}`);
+        // Decode the common abort path so users see a meaningful hint
+        // instead of "MoveAbort in 1st command, abort code: 0".
+        const hint = msg.includes("abort code: 0")
+          ? "Order state isn't LOCKED (already revealed, or lock didn't land). Try refresh."
+          : msg.includes("abort code: 2")
+          ? "Wallet isn't a party to this order — only maker or taker can reveal."
+          : msg.slice(0, 120);
+        setFundError(`Reveal blocked — ${hint}`);
         setPhase("sealed");
         return;
       }
