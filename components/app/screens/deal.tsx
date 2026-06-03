@@ -56,14 +56,32 @@ function PolicyCheckLine({ ok, delay, children }: { ok?: boolean; delay: number;
 type RevealStyle = "decrypt" | "wave" | "pop";
 
 function TermsPanel({
-  order, revealed, revealing, revealStyle,
+  order, revealed, revealing, revealStyle, decryptFailed,
 }: {
   order: Order;
   revealed: boolean;
   revealing: boolean;
   revealStyle: RevealStyle;
+  decryptFailed?: boolean;
 }) {
   const t = order.terms;
+  // When the on-chain reveal succeeded but the AES key isn't in this browser
+  // session, we have nothing to fill the encrypted fields with. Show an
+  // em-dash instead of a misleading "0".
+  const enc = (v: React.ReactNode) =>
+    decryptFailed ? (
+      <span title="Terms encrypted — AES key not available in this browser session">
+        <b style={{ fontFamily: "var(--font-display)", fontSize: 30, color: "var(--text-faint)" }}>—</b>
+      </span>
+    ) : (
+      v
+    );
+  const encInline = (v: React.ReactNode) =>
+    decryptFailed ? (
+      <span title="Terms encrypted — AES key not available in this browser session" style={{ color: "var(--text-faint)" }}>—</span>
+    ) : (
+      v
+    );
   const revealTransitions: Record<RevealStyle, CSSProperties> = {
     decrypt: { filter: revealed ? "blur(0)" : "blur(13px)", opacity: revealed ? 1 : 0.5, transition: "filter .9s var(--ease), opacity .9s" },
     wave:    { clipPath: revealed ? "inset(0 0 0 0)" : "inset(0 0 100% 0)", filter: revealed ? "none" : "blur(6px)", transition: "clip-path 1s var(--ease), filter 1s" },
@@ -139,12 +157,12 @@ function TermsPanel({
             <div style={lblS}>Taker delivers</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
               <AssetIcon sym={t.get} size={30} />
-              {big(fmt(t.counter), t.get)}
+              {enc(big(fmt(t.counter), t.get))}
             </div>
           </div>
           <div style={{ gridColumn: "1 / -1", height: 1, background: "var(--border-soft)" }} />
-          <div><div style={lblS}>Price</div><div style={valS}>{t.price} {t.get}/{t.give}</div></div>
-          <div><div style={lblS}>Minimum fill</div><div style={valS}>{fmt(t.minFill)} {t.give}</div></div>
+          <div><div style={lblS}>Price</div><div style={valS}>{encInline(<>{t.price} {t.get}/{t.give}</>)}</div></div>
+          <div><div style={lblS}>Minimum fill</div><div style={valS}>{encInline(<>{fmt(t.minFill)} {t.give}</>)}</div></div>
           {t.note && (
             <div style={{ gridColumn: "1 / -1" }}>
               <div style={lblS}>Memo</div>
@@ -397,7 +415,7 @@ export default function DealScreen({
       </div>
 
       <div className="deal-grid">
-        <TermsPanel order={order} revealed={revealed} revealing={revealing} revealStyle={revealStyle} />
+        <TermsPanel order={order} revealed={revealed} revealing={revealing} revealStyle={revealStyle} decryptFailed={decryptFailed} />
 
         <div style={{ display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: 20 }}>
           <Card pad={20} glow>
@@ -502,13 +520,21 @@ export default function DealScreen({
                   <Row label="You receive">
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
                       <AssetIcon sym={order.side === "SELL" ? order.give : order.get} size={20} />
-                      <b>{fmt(order.side === "SELL" ? order.terms.amount : order.terms.counter)}</b>
+                      <b>
+                        {decryptFailed && order.side !== "SELL"
+                          ? <span style={{ color: "var(--text-faint)" }} title="Encrypted — key not in session">—</span>
+                          : fmt(order.side === "SELL" ? order.terms.amount : order.terms.counter)}
+                      </b>
                     </span>
                   </Row>
                   <Row label="You deliver">
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
                       <AssetIcon sym={order.side === "SELL" ? order.get : order.give} size={20} />
-                      <b>{fmt(order.side === "SELL" ? order.terms.counter : order.terms.amount)}</b>
+                      <b>
+                        {decryptFailed && order.side === "SELL"
+                          ? <span style={{ color: "var(--text-faint)" }} title="Encrypted — key not in session">—</span>
+                          : fmt(order.side === "SELL" ? order.terms.counter : order.terms.amount)}
+                      </b>
                     </span>
                   </Row>
                 </div>
@@ -566,9 +592,9 @@ export default function DealScreen({
                 }}
               >
                 <b>Lock + reveal are real on-chain</b> — see the lock tx above. But the AES key
-                for this seeded order lives in another session's storage, so the terms shown are
-                placeholders (price/counter rendered as 0). Real decrypt works for orders you
-                seal yourself in this browser via "Seal a quote".
+                for this seeded order lives in another session's storage, so the encrypted fields
+                (taker delivers, price, min fill) render as "—". Real decrypt works for orders
+                you seal yourself in this browser via "Seal a quote".
               </div>
             )}
           </Card>

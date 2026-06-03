@@ -304,6 +304,24 @@ export type SettledEvent = {
 };
 
 /**
+ * A settled trade enriched with the on-chain Order fields, so the Vault can
+ * render the same columns whether the row is a demo seed or a live event.
+ */
+export type SettledTrade = {
+  orderId: string;
+  txDigest: string;
+  settledAtEpoch: number;
+  when: string;            // human-readable time-ago
+  maker: string;           // full address
+  taker: string | null;
+  give: AssetSym;
+  get: AssetSym;
+  blobId: string;
+  escrowRequiredMist: string;
+  escrowDisplayLabel: string; // e.g. "5,856 USDC" — back-derived from escrow + asset
+};
+
+/**
  * Read recent `OrderSettled` events for the deployed package via Tatum's
  * Sui RPC gateway. Returns [] when the package hasn't been deployed yet, so
  * the Vault renders fine in demo mode.
@@ -342,6 +360,71 @@ export async function listSettledEvents(opts: {
         };
       })
       .filter((e): e is SettledEvent => e !== null);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetch full Order objects for a list of ids and merge with the settled
+ * events to produce SettledTrade rows. One RPC call per Vault load.
+ */
+export async function enrichSettledEvents(
+  events: SettledEvent[],
+  network: "mainnet" | "testnet" | "devnet" = "devnet",
+): Promise<SettledTrade[]> {
+  if (events.length === 0) return [];
+  try {
+    const res = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "sui_multiGetObjects",
+        params: [events.map((e) => e.orderId), { showContent: true }],
+        network,
+      }),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      result?: Array<{ data?: { content?: { fields?: Record<string, unknown> } } }>;
+    };
+    const items = json.result ?? [];
+    return events
+      .map<SettledTrade | null>((evt, i) => {
+        const fields = items[i]?.data?.content?.fields;
+        if (!fields) return null;
+        const give = decodeBytesField(fields.give_kind) as AssetSym;
+        const get = decodeBytesField(fields.get_kind) as AssetSym;
+        const escrowMistStr = String(fields.escrow_required ?? "0");
+        const escrowMistNum = Number(escrowMistStr);
+        // Back-derive a give-side display amount the same way the RFQ board
+        // does, so live + demo rows show comparable size figures.
+        const approxGiveAmount = escrowMistNum > 0
+          ? give === "SUI"
+            ? Math.floor(escrowMistNum / 1e9 / 0.05)
+            : Math.floor(escrowMistNum / 1e6 / 0.02)
+          : 0;
+        const escrowDisplayLabel = `${approxGiveAmount.toLocaleString("en-US")} ${give}`;
+        const takerField = (fields.taker as { fields?: { vec?: string[] } } | string | undefined);
+        const taker =
+          typeof takerField === "object" && takerField?.fields?.vec?.[0]
+            ? takerField.fields.vec[0]
+            : null;
+        return {
+          orderId: evt.orderId,
+          txDigest: evt.txDigest,
+          settledAtEpoch: evt.settledAtEpoch,
+          when: evt.timestampMs ? timeAgo(evt.timestampMs) + " ago" : `epoch ${evt.settledAtEpoch}`,
+          maker: String(fields.maker ?? ""),
+          taker,
+          give,
+          get,
+          blobId: decodeBytesField(fields.blob_id),
+          escrowRequiredMist: escrowMistStr,
+          escrowDisplayLabel,
+        };
+      })
+      .filter((t): t is SettledTrade => t !== null);
   } catch {
     return [];
   }
