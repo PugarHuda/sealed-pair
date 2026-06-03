@@ -230,22 +230,30 @@ export default function DealScreen({
           arguments: [tx.object(order.orderObj)],
         });
         const result = await signAndExecute({ transaction: tx });
-        if (!lockTxDigest) setLockTxDigest(result.digest);
-        // Wait so the next read (terms display, future settle) sees REVEALED.
-        try {
-          await suiClient.waitForTransaction({ digest: result.digest, options: { showEffects: true } });
-        } catch {
-          /* propagation timeout is non-fatal */
+        // signAndExecute resolves on broadcast — a Move-aborted tx still
+        // returns here with a digest. We must wait for effects + inspect
+        // status before treating this as a real success.
+        const full = await suiClient.waitForTransaction({
+          digest: result.digest,
+          options: { showEffects: true },
+        });
+        const status = full.effects?.status?.status;
+        if (status !== "success") {
+          throw new Error(full.effects?.status?.error ?? "Move execution aborted");
         }
+        if (!lockTxDigest) setLockTxDigest(result.digest);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Lock + reveal failed";
-        const hint = msg.includes("abort code: 0")
-          ? "Order isn't in a state we can act on — already locked by someone else, already revealed, or expired. Pick a different unlocked card."
-          : msg.includes("abort code: 1")
-          ? "Escrow amount doesn't match what the maker locked in."
-          : msg.includes("abort code: 2")
-          ? "Your wallet isn't a party to this order — only maker or taker can reveal."
-          : msg.slice(0, 160);
+        const hint =
+          msg.includes("Insufficient") || msg.toLowerCase().includes("insufficient gas") || msg.toLowerCase().includes("balance")
+            ? "Wallet doesn't have enough SUI for this order's escrow. Pick a smaller order (Suiscan shows escrow_required)."
+            : msg.includes("abort code: 0")
+            ? "Order isn't in a state we can act on — already locked by someone else, already revealed, or expired. Pick a different unlocked card."
+            : msg.includes("abort code: 1")
+            ? "Escrow amount doesn't match what the maker locked in."
+            : msg.includes("abort code: 2")
+            ? "Your wallet isn't a party to this order — only maker or taker can reveal."
+            : msg.slice(0, 200);
         setFundError(hint);
         setPhase("sealed");
         return;

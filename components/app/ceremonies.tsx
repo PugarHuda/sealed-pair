@@ -6,7 +6,7 @@ import { Badge, Btn, Mono, CeremonyStep } from "@/components/ui/primitives";
 import { IconName } from "@/components/ui/icon";
 import Mascot from "@/components/mascot";
 import { encryptText, generateKey, stashKey } from "@/lib/crypto";
-import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 
@@ -153,6 +153,7 @@ export function SealCeremony({
   // Wallet (D2/D3): when connected AND Move package deployed, we register
   // the Order on-chain for real. Otherwise step 4 remains a visual mock.
   const account = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const onChainEnabled = !!(account && SEALED_PAIR_PACKAGE_ID);
 
@@ -263,6 +264,17 @@ export function SealCeremony({
               ],
             });
             const result = await signAndExecute({ transaction: tx });
+            // dApp Kit returns just { digest, rawEffects? } from the wallet.
+            // We must do a separate read to confirm Move execution succeeded —
+            // signAndExecute resolves on broadcast even when the tx aborted.
+            const full = await suiClient.waitForTransaction({
+              digest: result.digest,
+              options: { showEffects: true },
+            });
+            const status = full.effects?.status?.status;
+            if (status !== "success") {
+              throw new Error(full.effects?.status?.error ?? "Move execution aborted");
+            }
             setTxDigest(result.digest);
           } catch (e) {
             // Wallet rejected or chain error — degrade to demo mode for this step
@@ -385,10 +397,8 @@ export function SettleCeremony({
   const [settleError, setSettleError] = useState<string | null>(null);
   const settleStarted = useRef(false);
 
-  // Real settle PTB runs in parallel with the visual animation when the
-  // wallet + package are wired. By the time the animation finishes the
-  // real digest is usually back.
   const account = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const onChainEnabled = !!(
     account &&
@@ -407,10 +417,30 @@ export function SettleCeremony({
           target: `${SEALED_PAIR_PACKAGE_ID}::order::settle`,
           arguments: [tx.object(order.orderObj)],
         });
+        // showEffects so we can detect Move aborts post-broadcast.
+        // signAndExecute resolves on broadcast, NOT on success — a tx that
+        // Move-aborted on-chain still returns a digest unless we check
+        // effects.status.
         const result = await signAndExecute({ transaction: tx });
+        // Wait for and inspect effects.status because signAndExecute returns
+        // on broadcast — a tx that Move-aborted still gives back a digest.
+        const full = await suiClient.waitForTransaction({
+          digest: result.digest,
+          options: { showEffects: true },
+        });
+        const status = full.effects?.status?.status;
+        if (status !== "success") {
+          throw new Error(full.effects?.status?.error ?? "Move execution aborted");
+        }
         setRealDigest(result.digest);
       } catch (e) {
-        setSettleError(e instanceof Error ? e.message : "Settle failed on-chain");
+        const raw = e instanceof Error ? e.message : "Settle failed on-chain";
+        const hint = raw.includes("abort code: 0")
+          ? "Settle blocked — order state isn't REVEALED on-chain (lock/reveal may not have landed for your wallet)."
+          : raw.includes("abort code: 2")
+          ? "Settle blocked — your wallet isn't a party to this order."
+          : raw.slice(0, 200);
+        setSettleError(hint);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -453,8 +483,17 @@ emit Receipt { blob: 0x…, digest }`}
       ms: 900,
     },
   ];
-  const done = useSteps(steps, true);
-  const finished = done >= steps.length;
+  const animDone = useSteps(steps, true);
+  // Animation may have walked through all the steps, but the user might
+  // still be looking at the wallet popup. Only treat the ceremony as truly
+  // FINISHED once the real on-chain tx has a digest. This prevents the
+  // "ghost settle" — UI claiming success while Slush is still pending.
+  const animFinished = animDone >= steps.length;
+  const finished = onChainEnabled
+    ? !!realDigest                    // real path: wait for actual chain success
+    : animFinished;                   // mock-only path: timer is the only signal
+  const waitingForWallet = onChainEnabled && animFinished && !realDigest && !settleError;
+  const done = waitingForWallet ? steps.length - 1 : animDone;
 
   return (
     <Overlay onClose={onClose}>
@@ -473,10 +512,16 @@ emit Receipt { blob: 0x…, digest }`}
             tone={settleError ? "bad" : finished ? "good" : "open"}
             icon={settleError ? "bolt" : finished ? "check" : "bolt"}
           >
-            {settleError ? "Settle failed" : finished ? "Settled" : "Settling"}
+            {settleError ? "Settle failed" : finished ? "Settled" : waitingForWallet ? "Awaiting wallet" : "Settling"}
           </Badge>
           <h2 style={{ fontSize: 24, marginTop: 8 }}>
-            {settleError ? "Settlement rejected by chain." : finished ? "Trade settled atomically." : "Settling atomically…"}
+            {settleError
+              ? "Settlement rejected by chain."
+              : finished
+              ? "Trade settled atomically."
+              : waitingForWallet
+              ? "Approve the settle PTB in your wallet…"
+              : "Settling atomically…"}
           </h2>
           <div style={{ color: "var(--text-dim)", fontSize: 14, marginTop: 4 }}>
             One block. Both legs. Either both transfers land, or neither does.
@@ -487,7 +532,15 @@ emit Receipt { blob: 0x…, digest }`}
         {steps.map((s, k) => (
           <div key={k}>
             <CeremonyStep
-              state={k < done ? "done" : k === done ? "active" : "pending"}
+              state={
+                waitingForWallet && k === steps.length - 1
+                  ? "active"
+                  : k < done
+                  ? "done"
+                  : k === done
+                  ? "active"
+                  : "pending"
+              }
               label={s.label}
               detail={s.detail}
               icon={s.icon}
@@ -501,7 +554,7 @@ emit Receipt { blob: 0x…, digest }`}
       {finished && !settleError && (
         <div className="fade-up" style={{ padding: "20px 28px 28px", borderTop: "1px solid var(--border-soft)" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            <Mono label="digest" copyable>{short(realDigest || digest(), 10, 6)}</Mono>
+            {realDigest && <Mono label="digest" copyable>{short(realDigest, 10, 6)}</Mono>}
             <Mono label="receipt" copyable>{short(objId())}</Mono>
           </div>
           {realDigest && (
