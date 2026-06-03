@@ -1,7 +1,6 @@
 "use client";
 // App shell + state machine, ported from main.jsx (Lagoon / top nav / decrypt / coral pip locked).
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import type { Order } from "@/lib/types";
 import {
   PERSONAS, SEED_ORDERS, SETTLED_SEED, makeOrder, digest,
@@ -17,6 +16,7 @@ import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
+import { useCurrentAccount } from "@mysten/dapp-kit";
 
 type Role = "marina" | "theo";
 type View = "board" | "create" | "vault" | "deal";
@@ -27,9 +27,16 @@ const NAV: { id: View; label: string; icon: IconName }[] = [
   { id: "vault",  label: "Vault",        icon: "shield" },
 ];
 
-function Logo() {
+function Logo({ onHome }: { onHome: () => void }) {
+  // In-app click handler instead of <Link href="/"> — clicking the logo
+  // inside /app should land back on the RFQ Board without nuking state.
+  // Users wanting the marketing page can use the browser's back button.
   return (
-    <Link href="/" style={{ display: "flex", alignItems: "center", gap: 11, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+    <button
+      onClick={onHome}
+      type="button"
+      style={{ display: "flex", alignItems: "center", gap: 11, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+    >
       <div
         style={{
           width: 44, height: 44, borderRadius: 13,
@@ -48,7 +55,7 @@ function Logo() {
           Sealed P2P OTC on Sui
         </div>
       </div>
-    </Link>
+    </button>
   );
 }
 
@@ -112,33 +119,32 @@ export default function AppPage() {
   const [sealDraft, setSealDraft] = useState<Order | null>(null);
   const [settleOrder, setSettleOrder] = useState<Order | null>(null);
   const [liveCount, setLiveCount] = useState<number | null>(null);
+  const account = useCurrentAccount();
 
-  // Pull live OrderPosted events from the deployed Move package and merge them
-  // into the board. No-op until NEXT_PUBLIC_SEALED_PAIR_PACKAGE_ID is set.
+  // Standalone refresh fn — used by the 30s poll AND fired manually right
+  // after finishSeal so the user's brand-new on-chain order appears within
+  // a few seconds instead of waiting up to half a minute.
+  const refreshLiveOrders = useCallback(async () => {
+    if (!packageStatus().configured) return;
+    try {
+      const live = await listOpenOrders({ network: SUI_NETWORK_FOR_EVENTS, limit: 50 });
+      setLiveCount(live.length);
+      setOrders((prev) => {
+        const seen = new Set(prev.map((o) => o.orderObj));
+        const fresh = live.filter((o) => !seen.has(o.orderObj));
+        return fresh.length ? [...fresh, ...prev] : prev;
+      });
+    } catch {
+      // Network blip — keep what we had.
+    }
+  }, []);
+
   useEffect(() => {
     if (!packageStatus().configured) return;
-    let cancelled = false;
-    const refresh = async () => {
-      try {
-        const live = await listOpenOrders({ network: SUI_NETWORK_FOR_EVENTS, limit: 50 });
-        if (cancelled) return;
-        setLiveCount(live.length);
-        setOrders((prev) => {
-          const seen = new Set(prev.map((o) => o.orderObj));
-          const fresh = live.filter((o) => !seen.has(o.orderObj));
-          return fresh.length ? [...fresh, ...prev] : prev;
-        });
-      } catch {
-        // Network blip — keep what we had.
-      }
-    };
-    refresh();
-    const t = setInterval(refresh, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
+    refreshLiveOrders();
+    const t = setInterval(refreshLiveOrders, 30_000);
+    return () => clearInterval(t);
+  }, [refreshLiveOrders]);
 
   const active = orders.find((o) => o.id === activeId) || null;
   const settled = orders.filter((o) => o.state === "SETTLED");
@@ -201,6 +207,13 @@ export default function AppPage() {
     setSealDraft(null);
     setView("board");
     window.scrollTo(0, 0);
+    // Fire two short follow-up polls so the user's real on-chain order shows
+    // up within a few seconds — events take ~1-3s to be indexable by the
+    // gateway, and the regular 30s tick is too slow to feel responsive.
+    if (patch.txDigest) {
+      setTimeout(() => { void refreshLiveOrders(); }, 1500);
+      setTimeout(() => { void refreshLiveOrders(); }, 5000);
+    }
   };
 
   /* settle flow */
@@ -245,7 +258,7 @@ export default function AppPage() {
           className="app-header-row"
           style={{ maxWidth: 1280, margin: "0 auto", padding: "14px 28px" }}
         >
-          <Logo />
+          <Logo onHome={() => goNav("board")} />
           <nav style={{ display: "flex", gap: 6, alignItems: "center" }}>
             {NAV.map((n) => {
               const on = view === n.id;
@@ -272,7 +285,10 @@ export default function AppPage() {
           <div className="app-header-trail">
             <NetworkPill />
             <ConnectButton />
-            <RoleToggle role={role} onChange={setRole} />
+            {/* Persona toggle is a pre-wallet demo artifact. Once a real
+                wallet is connected, your identity comes from the address —
+                showing the toggle is misleading. */}
+            {!account && <RoleToggle role={role} onChange={setRole} />}
           </div>
         </div>
       </header>
