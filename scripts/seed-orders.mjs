@@ -25,6 +25,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 import { webcrypto } from "node:crypto";
 import { fromBase64 } from "@mysten/sui/utils";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
@@ -40,9 +41,16 @@ const RESET = "\x1b[0m";
 const argv = process.argv.slice(2);
 const COUNT = Number(argv[argv.indexOf("--count") + 1]) || 3;
 const WALRUS_PUBLISHER = "https://publisher.walrus-testnet.walrus.space";
-const TATUM_TESTNET_URL = "https://sui-testnet.gateway.tatum.io";
+// The deployed package lives on devnet. Use the public devnet fullnode for
+// writes (the Tatum devnet gateway works for reads but the CLI/SDK paths
+// here drive into gRPC fast-paths that aren't proxied).
+const NETWORK = "devnet";
+const RPC_URL = "https://fullnode.devnet.sui.io:443";
 
-const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..").replace(/^\/(\w):/, "$1:");
+// fileURLToPath handles Windows drive letters + URL-encoded spaces correctly,
+// where path.dirname(URL.pathname) would give us garbage like "F:\F:\..." on Windows.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..");
 const envFile = path.join(repoRoot, ".env.local");
 
 function readDotEnv(file) {
@@ -122,13 +130,7 @@ async function main() {
   const address = keypair.toSuiAddress();
   console.log(`${DIM}address: ${address}${RESET}`);
 
-  const client = new SuiJsonRpcClient({
-    network: "testnet",
-    url: TATUM_TESTNET_URL,
-    // We don't have x-api-key support out-of-the-box in the SDK transport,
-    // but the gateway accepts unauthenticated reads at low rate. For writes
-    // we'd want to pipe through /api/sui; the user-facing app already does.
-  });
+  const client = new SuiJsonRpcClient({ network: NETWORK, url: RPC_URL });
 
   console.log(`\n${CYAN}=== seeding ${COUNT} orders ===${RESET}`);
   const created = [];
@@ -206,7 +208,8 @@ async function main() {
     const bid = (o.blobId.slice(0, 6) + "…" + o.blobId.slice(-4)).padEnd(20);
     console.log(`| ${o.n} | ${pair} | ${amt} | ${oid} | ${dig} | ${bid} |`);
   }
-  console.log(`\n${GREEN}done.${RESET} board polls every 30s — refresh https://sealed-pair.vercel.app/app shortly.`);
+  console.log(`\n${GREEN}done.${RESET} board polls suix_queryEvents every 30s — refresh https://sealed-pair.vercel.app/app shortly.`);
+  console.log(`${DIM}Suiscan: https://suiscan.xyz/${NETWORK}/account/${address}${RESET}`);
 }
 
 main().catch((e) => {
