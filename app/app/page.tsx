@@ -111,15 +111,61 @@ function RoleToggle({ role, onChange }: { role: Role; onChange: (r: Role) => voi
   );
 }
 
+// Cache the last batch of live on-chain orders in localStorage so the board
+// renders instantly on hard refresh instead of flashing the seed-only view
+// while the first Tatum RPC call completes. Capped at 50 entries — the same
+// page-size the poll asks for — so it can't grow unbounded.
+const LIVE_CACHE_KEY = `sealedpair:live-orders:${SUI_NETWORK_FOR_EVENTS}`;
+
+function readLiveCache(): Order[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LIVE_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Order[];
+    return Array.isArray(parsed) ? parsed.slice(0, 50) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLiveCache(orders: Order[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify(orders.slice(0, 50)));
+  } catch {
+    // Quota or private-mode failure — caching is best-effort.
+  }
+}
+
 export default function AppPage() {
   const [role, setRole] = useState<Role>("marina");
   const [view, setView] = useState<View>("board");
+  // Seed with the demo set so the board never renders empty on first paint.
+  // After mount we splice in any cached live orders synchronously so the
+  // visible state matches what the user saw before the refresh.
   const [orders, setOrders] = useState<Order[]>(() => [SETTLED_SEED, ...SEED_ORDERS]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [sealDraft, setSealDraft] = useState<Order | null>(null);
   const [settleOrder, setSettleOrder] = useState<Order | null>(null);
   const [liveCount, setLiveCount] = useState<number | null>(null);
+  // Until first client-side effect runs we deliberately keep wallet-dependent
+  // chrome (persona toggle) hidden. That flips on after hydration so a brief
+  // pre-hydration flash of the toggle doesn't appear and then vanish.
+  const [hydrated, setHydrated] = useState(false);
   const account = useCurrentAccount();
+
+  // Hydrate cached live orders on mount — runs once, syncs with seed state.
+  useEffect(() => {
+    setHydrated(true);
+    const cached = readLiveCache();
+    if (cached.length === 0) return;
+    setOrders((prev) => {
+      const seen = new Set(prev.map((o) => o.orderObj));
+      const fresh = cached.filter((o) => !seen.has(o.orderObj));
+      return fresh.length ? [...fresh, ...prev] : prev;
+    });
+  }, []);
 
   // Standalone refresh fn — used by the 30s poll AND fired manually right
   // after finishSeal so the user's brand-new on-chain order appears within
@@ -129,10 +175,19 @@ export default function AppPage() {
     try {
       const live = await listOpenOrders({ network: SUI_NETWORK_FOR_EVENTS, limit: 50 });
       setLiveCount(live.length);
+      // Persist immediately so the next page-load hydrates from this snapshot.
+      writeLiveCache(live);
       setOrders((prev) => {
-        const seen = new Set(prev.map((o) => o.orderObj));
+        const liveIds = new Set(live.map((o) => o.orderObj));
+        // Remove any stale cached live order that the fresh fetch dropped
+        // (e.g., it just got locked/settled and listOpenOrders filtered it out).
+        // Keep demo seeds + the just-fetched live set.
+        const keepers = prev.filter(
+          (o) => !o.orderObj.startsWith("0x") || liveIds.has(o.orderObj),
+        );
+        const seen = new Set(keepers.map((o) => o.orderObj));
         const fresh = live.filter((o) => !seen.has(o.orderObj));
-        return fresh.length ? [...fresh, ...prev] : prev;
+        return fresh.length ? [...fresh, ...keepers] : keepers;
       });
     } catch {
       // Network blip — keep what we had.
@@ -287,8 +342,10 @@ export default function AppPage() {
             <ConnectButton />
             {/* Persona toggle is a pre-wallet demo artifact. Once a real
                 wallet is connected, your identity comes from the address —
-                showing the toggle is misleading. */}
-            {!account && <RoleToggle role={role} onChange={setRole} />}
+                showing the toggle is misleading. Gate on `hydrated` so we
+                don't flash the toggle for a frame before useCurrentAccount
+                resolves on initial mount. */}
+            {hydrated && !account && <RoleToggle role={role} onChange={setRole} />}
           </div>
         </div>
       </header>
