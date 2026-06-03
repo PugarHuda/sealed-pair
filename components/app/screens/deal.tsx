@@ -196,6 +196,41 @@ export default function DealScreen({
 
   const [fundError, setFundError] = useState<string | null>(null);
   const [decryptFailed, setDecryptFailed] = useState(false);
+  const [walletBalanceMist, setWalletBalanceMist] = useState<bigint | null>(null);
+
+  // Pre-flight balance check: read the connected wallet's SUI balance so we
+  // can warn the user *before* the wallet popup if their escrow can't fit.
+  // Tx would still broadcast and revert; this saves them from burning
+  // gas + a confusing Move abort.
+  useEffect(() => {
+    if (!account?.address) {
+      setWalletBalanceMist(null);
+      return;
+    }
+    let cancelled = false;
+    suiClient
+      .getBalance({ owner: account.address })
+      .then((b) => { if (!cancelled) setWalletBalanceMist(BigInt(b.totalBalance)); })
+      .catch(() => { if (!cancelled) setWalletBalanceMist(null); });
+    return () => { cancelled = true; };
+  }, [account?.address, suiClient]);
+
+  const requiredEscrowMist = onChainEnabled && order.escrowRequiredMist
+    ? BigInt(order.escrowRequiredMist)
+    : null;
+  // Reserve ~0.05 SUI for gas. If escrow + reserve > balance, can't fund.
+  const GAS_RESERVE_MIST = 50_000_000n;
+  const balanceIssue =
+    onChainEnabled && requiredEscrowMist && walletBalanceMist !== null
+      ? walletBalanceMist < requiredEscrowMist + GAS_RESERVE_MIST
+        ? {
+            short: walletBalanceMist,
+            need: requiredEscrowMist + GAS_RESERVE_MIST,
+            requiredSui: Number(requiredEscrowMist) / 1e9,
+            balanceSui: Number(walletBalanceMist) / 1e9,
+          }
+        : null
+      : null;
 
   const fund = async () => {
     setFundError(null);
@@ -409,15 +444,54 @@ export default function DealScreen({
                     <b>Tx failed — escrow not posted.</b> {fundError.slice(0, 160)}
                   </div>
                 )}
+                {balanceIssue && (
+                  <div
+                    className="fade-up"
+                    style={{
+                      padding: "10px 12px",
+                      background: "color-mix(in oklab, var(--warn) 18%, transparent)",
+                      border: "1px solid var(--warn)",
+                      borderRadius: "var(--r-sm)",
+                      color: "var(--warn)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      marginBottom: 12,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <b>Wallet too low for this escrow.</b> Need {balanceIssue.requiredSui.toFixed(3)} SUI
+                    (+gas), you have {balanceIssue.balanceSui.toFixed(3)} SUI. Pick a smaller order or
+                    top up at <a href="https://faucet.sui.io" target="_blank" rel="noopener noreferrer" style={{ color: "var(--warn)", textDecoration: "underline" }}>faucet.sui.io</a>.
+                  </div>
+                )}
                 <div style={{ background: "var(--deep)", borderRadius: "var(--r-sm)", padding: 14, marginBottom: 14, display: "grid", gap: 10 }}>
-                  <Row label="Good-faith escrow"><b>{fmt(order.escrow.amount)} {order.escrow.asset}</b></Row>
+                  <Row label="Good-faith escrow">
+                    <b>
+                      {requiredEscrowMist
+                        ? `${(Number(requiredEscrowMist) / 1e9).toFixed(3)} SUI`
+                        : `${fmt(order.escrow.amount)} ${order.escrow.asset}`}
+                    </b>
+                  </Row>
                   <Row label="Refundable"><Badge tone="good" size="sm">Yes, if maker bails</Badge></Row>
                   <div style={{ fontSize: 12, color: "var(--text-faint)", lineHeight: 1.5 }}>
                     Funding escrow is what satisfies the Seal policy — it’s the key that unlocks the terms. Cancel after reveal and you forfeit the fee.
                   </div>
                 </div>
-                <Btn full size="lg" variant="seal" icon="unlock" disabled={phase === "funding"} onClick={fund}>
-                  {phase === "funding" ? "Funding…" : fundError ? "Retry — fund escrow & request reveal" : "Fund escrow & request reveal"}
+                <Btn
+                  full
+                  size="lg"
+                  variant="seal"
+                  icon="unlock"
+                  disabled={phase === "funding" || !!balanceIssue}
+                  onClick={fund}
+                >
+                  {phase === "funding"
+                    ? "Funding…"
+                    : balanceIssue
+                    ? "Insufficient SUI for escrow"
+                    : fundError
+                    ? "Retry — fund escrow & request reveal"
+                    : "Fund escrow & request reveal"}
                 </Btn>
               </>
             )}
