@@ -12,7 +12,17 @@ import { SuiClientProvider, WalletProvider, createNetworkConfig } from "@mysten/
 import { getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import "@mysten/dapp-kit/dist/index.css";
 
+// Same env var that drives lib/sui-orders.ts::SUI_NETWORK_FOR_EVENTS. Keeping
+// the wallet provider, the event poller, and the SuiScan deep links all on
+// the same chain prevents "Package does not exist" errors that come from
+// dry-running a tx against the wrong network's fullnode.
+const NETWORK = ((process.env.NEXT_PUBLIC_SUI_NETWORK_FOR_EVENTS || "testnet").trim() as
+  | "mainnet"
+  | "testnet"
+  | "devnet");
+
 const { networkConfig } = createNetworkConfig({
+  devnet:  { network: "devnet",  url: getJsonRpcFullnodeUrl("devnet")  },
   testnet: { network: "testnet", url: getJsonRpcFullnodeUrl("testnet") },
   mainnet: { network: "mainnet", url: getJsonRpcFullnodeUrl("mainnet") },
 });
@@ -30,7 +40,7 @@ export default function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <SuiClientProvider networks={networkConfig} defaultNetwork="testnet">
+      <SuiClientProvider networks={networkConfig} defaultNetwork={NETWORK}>
         <WalletProvider autoConnect>{children}</WalletProvider>
       </SuiClientProvider>
     </QueryClientProvider>
