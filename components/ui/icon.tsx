@@ -5,7 +5,7 @@ import { CSSProperties, JSX } from "react";
 export type IconName =
   | "lock" | "unlock" | "shield" | "check" | "plus" | "search" | "copy" | "clock"
   | "layers" | "drop" | "arrows" | "chev" | "eye" | "anchor" | "wave" | "bolt"
-  | "doc" | "user" | "spark" | "ext";
+  | "doc" | "user" | "spark" | "ext" | "bell";
 
 const Ic: Record<IconName, JSX.Element> = {
   lock:    <path d="M6 11V8a6 6 0 1 1 12 0v3M5 11h14v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z" />,
@@ -28,6 +28,7 @@ const Ic: Record<IconName, JSX.Element> = {
   user:    <g><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></g>,
   spark:   <path d="M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z" />,
   ext:     <g><path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M19 14v5H5V5h5"/></g>,
+  bell:    <g><path d="M6 18h12l-1.5-2.4A4 4 0 0 1 16 13.5V10a4 4 0 0 0-8 0v3.5a4 4 0 0 1-.5 2.1z"/><path d="M10 21a2 2 0 0 0 4 0"/></g>,
 };
 
 export default function Icon({

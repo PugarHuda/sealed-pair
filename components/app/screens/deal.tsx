@@ -11,6 +11,7 @@ import { decryptText, loadKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist } from "@/lib/sui-orders";
+import { CounterOfferModal, CounterOffersPanel } from "@/components/app/counter-offer";
 
 const useTimeout = (fn: () => void, ms: number | null) => {
   useEffect(() => {
@@ -215,6 +216,8 @@ export default function DealScreen({
   const [fundError, setFundError] = useState<string | null>(null);
   const [decryptFailed, setDecryptFailed] = useState(false);
   const [walletBalanceMist, setWalletBalanceMist] = useState<bigint | null>(null);
+  const [counterModalOpen, setCounterModalOpen] = useState(false);
+  const [counterCount, setCounterCount] = useState(0);
 
   // Pre-flight balance check: read the connected wallet's SUI balance so we
   // can warn the user *before* the wallet popup if their escrow can't fit.
@@ -511,6 +514,20 @@ export default function DealScreen({
                     ? "Retry — fund escrow & request reveal"
                     : "Fund escrow & request reveal"}
                 </Btn>
+                {/* Counter-offer entry — only meaningful when wallet connected
+                    AND we have a real on-chain orderId (the localStorage index
+                    keys off it). Disabled in mock mode. */}
+                {account?.address && order.orderObj.startsWith("0x") && phase === "sealed" && (
+                  <Btn
+                    full
+                    variant="outline"
+                    icon="bolt"
+                    style={{ marginTop: 10 }}
+                    onClick={() => setCounterModalOpen(true)}
+                  >
+                    Counter-offer instead →
+                  </Btn>
+                )}
               </>
             )}
 
@@ -557,6 +574,18 @@ export default function DealScreen({
             )}
           </Card>
 
+          {/* Counter-offers panel — shows received counters for the maker,
+              and outgoing ones for the taker. Renders nothing when no
+              counters exist for this orderId. Key bumps on counterCount so a
+              fresh submission re-reads localStorage. */}
+          {order.orderObj.startsWith("0x") && (
+            <CounterOffersPanel
+              key={`co-${counterCount}`}
+              orderId={order.orderObj}
+              isMaker={isMine}
+            />
+          )}
+
           <Card pad={18}>
             <div style={{ ...lblS, marginBottom: 12 }}>Cryptographic commitment</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -600,6 +629,17 @@ export default function DealScreen({
           </Card>
         </div>
       </div>
+      {counterModalOpen && account?.address && (
+        <CounterOfferModal
+          order={order}
+          proposerAddr={account.address}
+          onClose={() => setCounterModalOpen(false)}
+          onDone={() => {
+            setCounterModalOpen(false);
+            setCounterCount((n) => n + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

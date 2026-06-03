@@ -17,6 +17,19 @@ import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
 import { useAutoConnectWallet, useCurrentAccount } from "@mysten/dapp-kit";
+import {
+  WatchlistButton,
+  WatchlistDrawer,
+  ToastStack,
+  ToastItem,
+} from "@/components/app/watchlist";
+import {
+  fireSystemNotification,
+  listWatches,
+  loadSeenOrderIds,
+  matchingWatches,
+  persistSeenOrderIds,
+} from "@/lib/watchlist";
 
 type Role = "marina" | "theo";
 type View = "board" | "create" | "vault" | "deal";
@@ -198,6 +211,8 @@ export default function AppPage() {
   // pre-hydration flash of the toggle doesn't appear and then vanish.
   const [hydrated, setHydrated] = useState(false);
   const [repMap, setRepMap] = useState<Map<string, MakerStats>>(() => new Map());
+  const [watchlistOpen, setWatchlistOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
   const account = useCurrentAccount();
   // While dApp Kit's autoConnect is in 'idle' we don't yet know whether the
   // user has a saved wallet. Treat that window as "wallet unknown" so we
@@ -238,6 +253,41 @@ export default function AppPage() {
         const fresh = live.filter((o) => !seen.has(o.orderObj));
         return fresh.length ? [...fresh, ...keepers] : keepers;
       });
+
+      // ---- Watchlist matcher ----
+      // Diff the fresh live set against the seen-order memory and fire
+      // toasts + system notifications for matches. This runs *outside* the
+      // setOrders callback because it has side effects (Notification API).
+      const watches = listWatches();
+      if (watches.length > 0) {
+        const seenIds = loadSeenOrderIds();
+        const newlySeen = new Set(seenIds);
+        const fired: ToastItem[] = [];
+        for (const o of live) {
+          if (seenIds.has(o.orderObj)) continue;
+          newlySeen.add(o.orderObj);
+          const hits = matchingWatches(o, watches);
+          if (hits.length === 0) continue;
+          const title = `New ${o.side} · ${o.give} → ${o.get}`;
+          const body = `${o.sizeBand} band · maker ${typeof o.maker === "string" ? o.maker : o.maker.handle}`;
+          fired.push({ id: o.orderObj, title, body, createdAt: Date.now() });
+          fireSystemNotification({ title, body });
+        }
+        persistSeenOrderIds(newlySeen);
+        if (fired.length > 0) {
+          setToasts((cur) => [...fired, ...cur].slice(0, 6));
+          // Auto-dismiss each new toast after 8s.
+          fired.forEach((t) => {
+            setTimeout(() => {
+              setToasts((cur) => cur.filter((x) => x.id !== t.id));
+            }, 8000);
+          });
+        }
+      } else {
+        // No active watches — still remember what we've seen so a future
+        // watch add doesn't immediately fire historic alerts.
+        persistSeenOrderIds(new Set(live.map((o) => o.orderObj)));
+      }
     } catch {
       // Network blip — keep what we had.
     }
@@ -416,6 +466,7 @@ export default function AppPage() {
           </nav>
           <div className="app-header-trail">
             <NetworkPill />
+            <WatchlistButton onOpen={() => setWatchlistOpen(true)} />
             <ConnectButton />
             {/* Persona toggle is a pre-wallet demo artifact. Once a real
                 wallet is connected, your identity comes from the address —
@@ -462,6 +513,8 @@ export default function AppPage() {
 
       {sealDraft && <SealCeremony order={sealDraft} onDone={finishSeal} onClose={() => setSealDraft(null)} />}
       {settleOrder && <SettleCeremony order={settleOrder} onDone={finishSettle} onClose={() => setSettleOrder(null)} />}
+      {watchlistOpen && <WatchlistDrawer onClose={() => setWatchlistOpen(false)} />}
+      <ToastStack toasts={toasts} onDismiss={(id) => setToasts((cur) => cur.filter((t) => t.id !== id))} />
     </div>
   );
 }
