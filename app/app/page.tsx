@@ -15,7 +15,7 @@ import DealScreen from "@/components/app/screens/deal";
 import VaultScreen from "@/components/app/screens/vault";
 import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import NetworkPill from "@/components/app/network-pill";
-import { listOpenOrders, packageStatus } from "@/lib/sui-orders";
+import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
 
 type Role = "marina" | "theo";
@@ -120,7 +120,7 @@ export default function AppPage() {
     let cancelled = false;
     const refresh = async () => {
       try {
-        const live = await listOpenOrders({ network: "testnet", limit: 50 });
+        const live = await listOpenOrders({ network: SUI_NETWORK_FOR_EVENTS, limit: 50 });
         if (cancelled) return;
         setLiveCount(live.length);
         setOrders((prev) => {

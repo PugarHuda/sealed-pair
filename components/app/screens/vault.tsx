@@ -6,7 +6,7 @@ import { Card, Badge, Mono } from "@/components/ui/primitives";
 import { Pair } from "@/components/ui/asset";
 import Icon, { IconName } from "@/components/ui/icon";
 import { PageHead, lblS } from "@/components/app/shared";
-import { listSettledEvents, packageStatus, SettledEvent } from "@/lib/sui-orders";
+import { listSettledEvents, packageStatus, SettledEvent, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 
 function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: IconName; tone?: string }) {
   return (
@@ -125,7 +125,7 @@ export default function VaultScreen({ settled }: { settled: Order[] }) {
     if (!isLive) return;
     let cancelled = false;
     const refresh = async () => {
-      const events = await listSettledEvents({ network: "testnet", limit: 50 });
+      const events = await listSettledEvents({ network: SUI_NETWORK_FOR_EVENTS, limit: 50 });
       if (!cancelled) setOnChainSettled(events);
     };
     refresh();
@@ -208,7 +208,7 @@ function SettledEventRow({ evt }: { evt: SettledEvent }) {
         </div>
         <Mono label="digest" copyable>{short(evt.txDigest, 10, 6)}</Mono>
         <a
-          href={`https://suiscan.xyz/testnet/tx/${evt.txDigest}`}
+          href={`${SUISCAN_HOST}/tx/${evt.txDigest}`}
           target="_blank"
           rel="noopener noreferrer"
           style={{

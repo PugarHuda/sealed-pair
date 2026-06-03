@@ -52,6 +52,14 @@ export async function fetchCurrentEpoch(network: "mainnet" | "testnet" | "devnet
 export const SEALED_PAIR_PACKAGE_ID: string | null =
   (process.env.NEXT_PUBLIC_SEALED_PAIR_PACKAGE_ID || "").trim() || null;
 
+/** Which Sui network the package lives on. Drives where the RFQ board polls events,
+ *  what SuiScan host the deep links use, and which network DealScreen + SealCeremony
+ *  pass to suix_queryEvents / sui_getLatestSuiSystemState calls. */
+export const SUI_NETWORK_FOR_EVENTS: "mainnet" | "testnet" | "devnet" =
+  (((process.env.NEXT_PUBLIC_SUI_NETWORK_FOR_EVENTS || "").trim() || "testnet") as "mainnet" | "testnet" | "devnet");
+
+export const SUISCAN_HOST = `https://suiscan.xyz/${SUI_NETWORK_FOR_EVENTS}`;
+
 /** Throws a helpful error so we never silently call a non-existent package. */
 export function requirePackageId(): string {
   if (!SEALED_PAIR_PACKAGE_ID) {

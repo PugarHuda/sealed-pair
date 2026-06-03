@@ -8,7 +8,7 @@ import Mascot from "@/components/mascot";
 import { encryptText, generateKey, stashKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 
 /* ---------------- step runner ---------------- */
 function useSteps(steps: { ms: number }[], active: boolean, onComplete?: () => void) {
@@ -246,7 +246,7 @@ export function SealCeremony({
             const escrowMist = computeEscrowMist(order.terms, order.give);
             // Set expiry ~30 epochs ahead of current (≈30 days on testnet);
             // falls back to a safe 1000 if we can't read the system state.
-            const currentEpoch = await fetchCurrentEpoch("testnet");
+            const currentEpoch = await fetchCurrentEpoch(SUI_NETWORK_FOR_EVENTS);
             const expiryEpoch = BigInt((currentEpoch > 0 ? currentEpoch : 0) + 30);
             // Save resolved MIST so DealScreen.fund() uses the exact amount.
             (order as { escrowRequiredMist?: string }).escrowRequiredMist = escrowMist.toString();
@@ -339,7 +339,7 @@ export function SealCeremony({
                 <>
                   {" · "}
                   <a
-                    href={`https://suiscan.xyz/testnet/tx/${txDigest}`}
+                    href={`${SUISCAN_HOST}/tx/${txDigest}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: "var(--accent)", textDecoration: "underline" }}
@@ -507,7 +507,7 @@ emit Receipt { blob: 0x…, digest }`}
           {realDigest && (
             <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>
               <a
-                href={`https://suiscan.xyz/testnet/tx/${realDigest}`}
+                href={`${SUISCAN_HOST}/tx/${realDigest}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ color: "var(--accent)", textDecoration: "underline" }}
