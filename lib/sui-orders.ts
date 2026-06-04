@@ -364,6 +364,16 @@ function eventToOrder(evt: RpcEvent): Order | null {
     expiresIn: humanExpiry(p.expiry_epoch),
   });
 
+  // Devnet/testnet/mainnet epochs are all ~24h. We mint orders with a
+  // +30-epoch expiry window, so project that forward from the post-time
+  // event timestamp to get a stable countdown target. Stable means it
+  // doesn't drift across re-renders / re-fetches.
+  const EPOCH_MS = 86_400_000;
+  const EXPIRY_EPOCHS = 30;
+  const expiresAtMs = evt.timestampMs
+    ? Number(evt.timestampMs) + EXPIRY_EPOCHS * EPOCH_MS
+    : Date.now() + EXPIRY_EPOCHS * EPOCH_MS;
+
   return {
     ...base,
     blobId,
@@ -371,6 +381,7 @@ function eventToOrder(evt: RpcEvent): Order | null {
     sizeBand: bandFor(approxGiveAmount),
     escrowRequiredMist: escrowMistStr,
     targetTaker: getTargetHint(blobId) ?? undefined,
+    expiresAtMs,
   };
 }
 

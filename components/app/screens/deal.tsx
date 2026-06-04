@@ -218,6 +218,9 @@ export default function DealScreen({
   const [walletBalanceMist, setWalletBalanceMist] = useState<bigint | null>(null);
   const [counterModalOpen, setCounterModalOpen] = useState(false);
   const [counterCount, setCounterCount] = useState(0);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelDigest, setCancelDigest] = useState<string | null>(null);
 
   // Pre-flight balance check: read the connected wallet's SUI balance so we
   // can warn the user *before* the wallet popup if their escrow can't fit.
@@ -385,6 +388,48 @@ export default function DealScreen({
     setPhase("revealed");
   };
 
+  // Cancel-open flow: lifts the order from OPEN → CANCELLED via a real
+  // Move PTB. Only valid while still sealed (not yet locked). Errors map
+  // to readable hints; success updates local state so the badge flips.
+  const cancelOffer = async () => {
+    setCancelling(true);
+    setCancelError(null);
+    if (!(onChainEnabled && SEALED_PAIR_PACKAGE_ID && account)) {
+      // Demo path — just flip local state.
+      onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
+      setCancelling(false);
+      return;
+    }
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${SEALED_PAIR_PACKAGE_ID}::order::cancel_open`,
+        arguments: [tx.object(order.orderObj)],
+      });
+      const result = await signAndExecute({ transaction: tx });
+      const full = await suiClient.waitForTransaction({
+        digest: result.digest,
+        options: { showEffects: true },
+      });
+      const status = full.effects?.status?.status;
+      if (status !== "success") {
+        throw new Error(full.effects?.status?.error ?? "cancel_open aborted");
+      }
+      setCancelDigest(result.digest);
+      onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "Cancel failed";
+      const hint = raw.includes("abort code: 0")
+        ? "Cancel blocked — order is no longer OPEN (already locked, revealed, or settled)."
+        : raw.includes("abort code: 2")
+        ? "Cancel blocked — only the maker can cancel."
+        : raw.slice(0, 200);
+      setCancelError(hint);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const pipPose =
     phase === "funding" ? "sealing" :
     revealing ? "thinking" :
@@ -448,10 +493,66 @@ export default function DealScreen({
                     You can walk away — if a taker funds escrow, Seal reveals your terms without you. No ghosting possible, by either side.
                   </div>
                 </div>
+                {cancelError && (
+                  <div
+                    className="fade-up"
+                    style={{
+                      padding: "10px 12px",
+                      background: "color-mix(in oklab, var(--bad) 14%, transparent)",
+                      border: "1px solid var(--bad)",
+                      borderRadius: "var(--r-sm)",
+                      color: "var(--bad)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <b>Cancel failed.</b> {cancelError}
+                  </div>
+                )}
+                {cancelDigest && (
+                  <div
+                    className="fade-up"
+                    style={{
+                      padding: "10px 12px",
+                      background: "color-mix(in oklab, var(--good) 14%, transparent)",
+                      border: "1px solid var(--good)",
+                      borderRadius: "var(--r-sm)",
+                      color: "var(--good)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      marginBottom: 12,
+                    }}
+                  >
+                    Order cancelled on-chain ·{" "}
+                    <a
+                      href={`https://suiscan.xyz/devnet/tx/${cancelDigest}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--good)", textDecoration: "underline" }}
+                    >
+                      view tx ↗
+                    </a>
+                  </div>
+                )}
                 <Btn full variant="primary" icon="user" onClick={() => onRoleSwitch?.("theo")}>
                   View as taker (Theo) →
                 </Btn>
-                <Btn full variant="quiet" style={{ marginTop: 8 }}>Cancel offer</Btn>
+                <Btn
+                  full
+                  variant="quiet"
+                  style={{ marginTop: 8 }}
+                  disabled={cancelling || !!cancelDigest}
+                  onClick={cancelOffer}
+                >
+                  {cancelDigest
+                    ? "Cancelled"
+                    : cancelling
+                    ? "Cancelling…"
+                    : onChainEnabled
+                    ? "Cancel offer (on-chain)"
+                    : "Cancel offer"}
+                </Btn>
               </>
             )}
 

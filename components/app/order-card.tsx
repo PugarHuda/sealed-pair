@@ -6,6 +6,7 @@ import { Badge, Btn, Card, Mono } from "@/components/ui/primitives";
 import { Pair } from "@/components/ui/asset";
 import Icon from "@/components/ui/icon";
 import { MakerTag, Ghost } from "./shared";
+import ExpiryCountdown from "./expiry-countdown";
 
 export default function OrderCard({
   order, isMine, onOpen, rep,
@@ -128,7 +129,8 @@ export default function OrderCard({
       >
         <Mono label="blobId" copyable style={{ maxWidth: "52%" }}>{short(order.blobId, 7, 5)}</Mono>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--text-faint)", fontSize: 12.5 }}>
-          <Icon name="clock" size={14} /> {order.expiresIn}
+          <Icon name="clock" size={14} />{" "}
+          {order.expiresAtMs ? <ExpiryCountdown targetMs={order.expiresAtMs} /> : order.expiresIn}
         </span>
       </div>
       <div style={{ padding: "0 20px 18px" }}>

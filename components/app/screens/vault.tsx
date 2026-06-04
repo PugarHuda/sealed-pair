@@ -11,6 +11,7 @@ import {
   enrichSettledEvents,
   packageStatus,
   SettledTrade,
+  MakerStats,
   SUI_NETWORK_FOR_EVENTS,
   SUISCAN_HOST,
 } from "@/lib/sui-orders";
@@ -49,7 +50,7 @@ function VerifyRow({ children, mono }: { children: React.ReactNode; mono?: strin
   );
 }
 
-export default function VaultScreen({ settled }: { settled: Order[] }) {
+export default function VaultScreen({ settled, repMap }: { settled: Order[]; repMap?: Map<string, MakerStats> }) {
   // Live on-chain settled trades, enriched with Order content so they
   // render with the same columns as the demo rows below.
   const [liveTrades, setLiveTrades] = useState<SettledTrade[]>([]);
@@ -108,6 +109,9 @@ export default function VaultScreen({ settled }: { settled: Order[] }) {
         <StatCard label="Avg settle time"  value={VOLUME_STATS.avgSettle}                  sub="quote → finality"        icon="bolt" tone="var(--accent-2)" />
         <StatCard label="Sealed right now" value={String(VOLUME_STATS.sealed)}             sub="live on the board"       icon="lock" tone="var(--seal-glow)" />
       </div>
+      {/* Maker leaderboard — sorted by settle count, top 5 only. Renders
+          nothing when repMap is empty / not yet loaded. */}
+      <MakerLeaderboard repMap={repMap} />
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <h3 style={{ fontSize: 17, whiteSpace: "nowrap" }}>Settlement history</h3>
         <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
@@ -250,6 +254,63 @@ function UnifiedRow({ trade, live }: { trade: SettledTrade & { code?: string }; 
           </div>
         </div>
       )}
+    </Card>
+  );
+}
+
+function MakerLeaderboard({ repMap }: { repMap?: Map<string, MakerStats> }) {
+  if (!repMap || repMap.size === 0) return null;
+  // The repMap aliases each entry under BOTH full and short address keys.
+  // Dedupe by object identity to avoid double-counting.
+  const unique = Array.from(new Set(repMap.values()));
+  const ranked = unique.sort((a, b) => b.settles - a.settles).slice(0, 5);
+  if (ranked.length === 0) return null;
+  return (
+    <Card pad={20} style={{ marginBottom: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+        <Icon name="spark" size={16} style={{ color: "var(--accent)" }} />
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15 }}>
+          Top makers · all-time settle count
+        </div>
+        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-faint)" }}>
+          from on-chain OrderSettled events
+        </span>
+      </div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {ranked.map((stats, i) => (
+          <div
+            key={stats.asMakerAddr}
+            style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "10px 12px",
+              background: i === 0 ? "color-mix(in oklab, var(--accent) 12%, var(--deep))" : "var(--deep)",
+              border: i === 0 ? "1px solid var(--accent)" : "1px solid var(--border-soft)",
+              borderRadius: "var(--r-sm)",
+            }}
+          >
+            <span
+              style={{
+                width: 26, height: 26, borderRadius: "50%",
+                display: "grid", placeItems: "center",
+                background: i === 0 ? "var(--accent)" : "var(--surface-3)",
+                color: i === 0 ? "var(--accent-ink)" : "var(--text-dim)",
+                fontWeight: 800, fontFamily: "var(--font-display)", fontSize: 13,
+              }}
+            >
+              {i + 1}
+            </span>
+            <span className="mono" style={{ fontSize: 13, color: "var(--text-dim)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {short(stats.asMakerAddr, 8, 6)}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--good)" }}>
+              {stats.settles}× settled
+            </span>
+            <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+              last @ epoch {stats.lastEpoch}
+            </span>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

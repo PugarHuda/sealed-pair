@@ -496,7 +496,7 @@ export default function AppPage() {
       >
         {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
-        {hydrated && view === "vault" && <VaultScreen settled={settled} />}
+        {hydrated && view === "vault" && <VaultScreen settled={settled} repMap={repMap} />}
         {hydrated && view === "deal" && active && (
           <DealScreen
             order={active}

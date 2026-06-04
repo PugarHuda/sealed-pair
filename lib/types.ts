@@ -52,6 +52,10 @@ export type Order = {
    *  Room disables the Fund button. Frontend-only gating until V2 puts
    *  the allowlist on-chain. */
   targetTaker?: string;
+  /** Absolute target timestamp (epoch ms) for live countdown. Set by
+   *  eventToOrder using post-time + 30-epoch window. Undefined for static
+   *  seed orders, which keep the legacy `expiresIn` string fallback. */
+  expiresAtMs?: number;
   createdAgo: string;
   expiresIn: string;
   settleDigest: string | null;
