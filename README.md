@@ -216,6 +216,30 @@ Audit trail. Live on-chain `OrderSettled` events stream in via Tatum's `suix_que
 
 ---
 
+## Tatum tools matrix
+
+Sealed Pair touches every layer of the Tatum stack relevant to this hackathon:
+
+| Tatum surface | How we use it |
+|---|---|
+| **RPC Nodes** (Sui mainnet/testnet/devnet) | 12 RPC methods through `/api/sui` proxy — events, objects, modules, balances, dry-run, dev-inspect, dynamic fields |
+| **RPC Gateway** | Each `sui-<network>.gateway.tatum.io` URL with `x-api-key` server-side custody. Latency probed live in `/api/integration-health`. |
+| **Data API** | `suix_queryTransactionBlocks` powers the wallet portfolio's recent-activity feed (`/api/tatum-data/wallet-history`) |
+| **MCP** | Our `.mcp.json` composes our sealed-pair tools with Tatum's official MCP server for full Sui RPC access from any AI client |
+| **My Gateways** (optional swap) | To replace the public gateway with a custom load-balanced URL: set `NEXT_PUBLIC_TATUM_GATEWAY_<NETWORK>=https://your-gateway-id.gateway.tatum.io` and route through `lib/networks.ts`. Same x-api-key auth. |
+
+## Walrus tools matrix
+
+| Walrus surface | How we use it |
+|---|---|
+| **Publisher** `PUT /v1/blobs` | Encrypted terms upload — 3-publisher failover (`lib/walrus.ts`) |
+| **Aggregator** `GET /v1/blobs/{blobId}` | Real blob fetch with header inspection in the BlobInspector |
+| **Aggregator** `GET /v1/blobs/by-object-id/{objectId}` | Reverse lookup via `/api/walrus/by-object-id/[objectId]` — fetch the blob given its on-chain Sui storage object |
+| **Counter-offer side-blobs** | Counter-offer flow uploads a SECOND encrypted blob per proposal, inheriting the same commitment property as the parent order |
+| **Content-addressed commitment** | `blobId` (BLAKE2b hash of ciphertext) stored on-chain in `Order.blob_id` makes swap-attacks provably detectable |
+
+---
+
 ## AI integration
 
 Sealed Pair exposes its on-chain reads as **MCP-compatible HTTP tools** so any

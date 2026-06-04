@@ -35,6 +35,14 @@ const METHOD_ALLOWLIST = new Set<string>([
   "sui_getEvents",
   // Move module introspection (powers the live deployed-contract panel)
   "sui_getNormalizedMoveModule",
+  // dry-run / dev-inspect — pre-flight a tx without burning gas, used by
+  // DealScreen's Fund button to confirm lock_with_escrow will succeed.
+  "sui_dryRunTransactionBlock",
+  "sui_devInspectTransactionBlock",
+  // dynamic fields — Sui storage exposes Walrus's storage_node + system
+  // state as dynamic children; needed for Walrus subsystem health reads.
+  "suix_getDynamicFields",
+  "suix_getDynamicFieldObject",
   // gas + system state (needed by frontend for expiry epoch calc)
   "suix_getReferenceGasPrice",
   "sui_getLatestSuiSystemState",

@@ -1,12 +1,13 @@
 {
   "$schema": "https://modelcontextprotocol.io/schemas/mcp.json",
   "name": "sealed-pair",
-  "description": "MCP tools for the Sealed Pair sealed P2P OTC dApp on Sui — read open RFQ orders, verify settlement digests, look up maker reputation.",
+  "description": "MCP tools for the Sealed Pair sealed P2P OTC dApp on Sui — read open RFQ orders, verify settlement digests, look up maker reputation. Stack with Tatum's official MCP for general-purpose Sui RPC access.",
   "version": "0.1.0",
   "servers": {
     "sealed-pair-http": {
       "transport": "http",
       "baseUrl": "https://sealed-pair.vercel.app/api/mcp",
+      "description": "Sealed Pair–specific tools (read-only, no signing).",
       "tools": [
         {
           "name": "list_open_orders",
@@ -14,6 +15,18 @@
           "endpoint": "/list-orders",
           "method": "GET",
           "queryParams": { "limit": "integer (1-50, default 20)" }
+        },
+        {
+          "name": "wallet_history",
+          "description": "Tatum Data API surface — recent transaction blocks for any Sui address via suix_queryTransactionBlocks. Returns digest, timestamp, gas used, status.",
+          "endpoint": "/tatum-data/wallet-history",
+          "baseUrlOverride": "https://sealed-pair.vercel.app/api",
+          "method": "GET",
+          "queryParams": {
+            "address": "0x + 64 hex Sui address",
+            "network": "mainnet | testnet | devnet (default devnet)",
+            "limit": "integer (1-25, default 10)"
+          }
         },
         {
           "name": "verify_settle_digest",
@@ -30,11 +43,19 @@
           "queryParams": { "address": "0x + 64 hex" }
         }
       ]
+    },
+    "tatum-official": {
+      "transport": "sse",
+      "description": "Tatum's official MCP server for general Sui (and 100+ chain) RPC access. Compose alongside sealed-pair tools for the broadest blockchain coverage in one config. Requires your Tatum API key.",
+      "url": "https://api.tatum.io/mcp",
+      "auth": { "type": "header", "headerName": "x-api-key", "valueEnv": "TATUM_API_KEY" },
+      "docs": "https://docs.tatum.io/docs/mcp-server"
     }
   },
   "notes": [
-    "All tools are read-only and route through Tatum's Sui RPC gateway with server-side API key custody.",
+    "All sealed-pair tools are read-only and route through Tatum's Sui RPC gateway with server-side API key custody.",
     "Mutations (create_offer, lock_with_escrow, settle, cancel_open, cancel_expired) require wallet signing and are not exposed.",
-    "GET /api/mcp returns the live tool catalog with full JSON schemas."
+    "GET /api/mcp returns the live tool catalog with full JSON schemas.",
+    "Compose 'sealed-pair-http' + 'tatum-official' in your MCP client to give an AI agent both Sealed Pair semantics AND raw Tatum RPC access."
   ]
 }
