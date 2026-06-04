@@ -15,6 +15,7 @@ import VaultScreen from "@/components/app/screens/vault";
 import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import MakerProfileModal from "@/components/app/maker-profile";
 import NetworkMismatchBanner from "@/components/app/network-mismatch";
+import OnboardingHint from "@/components/app/onboarding-hint";
 import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
@@ -640,6 +641,7 @@ export default function AppPage() {
       </header>
 
       <NetworkMismatchBanner />
+      {hydrated && <OnboardingHint />}
 
       {/* Main content renders only AFTER client hydration. Pre-hydration we
           paint a neutral skeleton so the static HTML never shows the seed-only

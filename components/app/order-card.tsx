@@ -62,30 +62,37 @@ export default function OrderCard({
       <div style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <MakerTag maker={order.maker} onClickProfile={onMakerProfile} />
-          {/* Reputation chip — only renders when this maker has at least one
-              prior on-chain settlement. Hidden for first-timers so it doesn't
-              read as "zero reputation, distrust this maker". */}
-          {rep && rep.settles > 0 && (
-            <span
-              title={`${rep.settles} settled trade${rep.settles === 1 ? "" : "s"} on-chain · last @ epoch ${rep.lastEpoch}`}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                fontSize: 11,
-                fontWeight: 700,
-                color: "var(--good)",
-                background: "color-mix(in oklab, var(--good) 14%, transparent)",
-                border: "1px solid color-mix(in oklab, var(--good) 30%, transparent)",
-                padding: "2px 8px",
-                borderRadius: 99,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <Icon name="check" size={11} sw={2.8} />
-              {rep.settles}× settled
-            </span>
-          )}
+          {/* Reputation tier chip — bronze/silver/gold derived from settle
+              count. Hidden for first-timers so it doesn't read as a
+              negative signal. Tiers: 1-2 bronze, 3-9 silver, 10+ gold. */}
+          {rep && rep.settles > 0 && (() => {
+            const tier =
+              rep.settles >= 10 ? { label: "Gold",   color: "#ffb24a", glow: "rgba(255,178,74,.35)" } :
+              rep.settles >= 3  ? { label: "Silver", color: "#cdd6e0", glow: "rgba(205,214,224,.35)" } :
+                                  { label: "Bronze", color: "#c9744a", glow: "rgba(201,116,74,.35)" };
+            return (
+              <span
+                title={`${tier.label} maker · ${rep.settles} settled trade${rep.settles === 1 ? "" : "s"} · last @ epoch ${rep.lastEpoch}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: tier.color,
+                  background: `color-mix(in oklab, ${tier.color} 14%, transparent)`,
+                  border: `1px solid color-mix(in oklab, ${tier.color} 40%, transparent)`,
+                  padding: "2px 8px",
+                  borderRadius: 99,
+                  whiteSpace: "nowrap",
+                  boxShadow: `0 0 8px ${tier.glow}`,
+                }}
+              >
+                <Icon name="spark" size={11} sw={2.6} />
+                {tier.label} · {rep.settles}×
+              </span>
+            );
+          })()}
         </div>
         {!isMine && stateBadge}
       </div>
