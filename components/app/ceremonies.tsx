@@ -1,7 +1,7 @@
 "use client";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import type { Order } from "@/lib/types";
-import { rnd, short, digest, objId, fmt } from "@/lib/data";
+import { rnd, short, objId, fmt } from "@/lib/data";
 import { Badge, Btn, Mono, CeremonyStep } from "@/components/ui/primitives";
 import { IconName } from "@/components/ui/icon";
 import Mascot from "@/components/mascot";

@@ -219,7 +219,7 @@ export default function AppPage() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [sealDraft, setSealDraft] = useState<Order | null>(null);
   const [settleOrder, setSettleOrder] = useState<Order | null>(null);
-  const [liveCount, setLiveCount] = useState<number | null>(null);
+  const [, setLiveCount] = useState<number | null>(null);
   // Until first client-side effect runs we deliberately keep wallet-dependent
   // chrome (persona toggle) hidden. That flips on after hydration so a brief
   // pre-hydration flash of the toggle doesn't appear and then vanish.

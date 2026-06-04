@@ -23,7 +23,8 @@
 // Public API mirrors lib/crypto.ts so call sites swap with a one-line
 // import change.
 
-import { SEALED_PAIR_PACKAGE_ID } from "@/lib/sui-orders";
+// SEALED_PAIR_PACKAGE_ID is imported by the commented-out Seal target
+// branch below. Keep the comment so the wiring path stays readable.
 import {
   encryptText as aesEncrypt,
   decryptText as aesDecrypt,

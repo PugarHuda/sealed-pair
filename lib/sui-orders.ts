@@ -704,9 +704,8 @@ export async function fetchMakerProfile(
   for (const evt of postedEvents) {
     if (evt.timestampMs) lastActivityMs = Math.max(lastActivityMs ?? 0, Number(evt.timestampMs));
   }
-  for (const t of mineSettled) {
-    // settledAtEpoch isn't a wall-clock; skip unless evt timestamp available
-  }
+  // settledAtEpoch isn't a wall-clock; skip mineSettled here unless a
+  // future change adds an event-level timestamp to OrderSettled.
   const recentPosted = postedEvents.slice(0, 6).map((evt) => {
     const p = evt.parsedJson as Partial<OrderPostedEvent>;
     return {
