@@ -14,7 +14,7 @@ export type Persona = {
   avatar: string; // hex color
 };
 
-export type Maker = { name: string; handle: string; color: string };
+export type Maker = { name: string; handle: string; color: string; addr?: string };
 
 export type OrderTerms = {
   amount: number;

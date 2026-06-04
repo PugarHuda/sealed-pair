@@ -64,12 +64,16 @@ export function PageHead({
   );
 }
 
-export function MakerTag({ maker, size = 30 }: { maker: Order["maker"]; size?: number }) {
+export function MakerTag({ maker, size = 30, onClickProfile }: { maker: Order["maker"]; size?: number; onClickProfile?: (addr: string) => void }) {
   const m = typeof maker === "string" ? PERSONAS[maker] : maker;
   const color = (m as { color?: string; avatar?: string }).color || (m as { avatar?: string }).avatar || "var(--accent)";
   const initial = m.name[0];
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+  // Profile click only opens for on-chain makers (we stored the full addr
+  // in eventToOrder). Demo personas don't carry an addr field.
+  const fullAddr = (m as { addr?: string }).addr;
+  const clickable = !!(onClickProfile && fullAddr);
+  const content = (
+    <>
       <span
         style={{
           width: size, height: size, borderRadius: "50%",
@@ -87,8 +91,28 @@ export function MakerTag({ maker, size = 30 }: { maker: Order["maker"]; size?: n
           {m.handle}
         </div>
       </span>
-    </span>
+    </>
   );
+  if (clickable) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (fullAddr) onClickProfile!(fullAddr);
+        }}
+        title="View maker profile"
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 10,
+          background: "transparent", border: "none", padding: 0, cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        {content}
+      </button>
+    );
+  }
+  return <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>{content}</span>;
 }
 
 export function Ghost({ w = 54 }: { w?: number }) {

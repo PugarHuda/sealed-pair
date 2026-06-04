@@ -13,6 +13,8 @@ import CreateScreen, { CreateDraft } from "@/components/app/screens/create";
 import DealScreen from "@/components/app/screens/deal";
 import VaultScreen from "@/components/app/screens/vault";
 import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
+import MakerProfileModal from "@/components/app/maker-profile";
+import NetworkMismatchBanner from "@/components/app/network-mismatch";
 import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
@@ -223,6 +225,7 @@ export default function AppPage() {
   const [repMap, setRepMap] = useState<Map<string, MakerStats>>(() => new Map());
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [profileAddr, setProfileAddr] = useState<string | null>(null);
   const account = useCurrentAccount();
   // Track pending toast auto-dismiss timers so we can cancel them on
   // unmount and avoid setState-on-unmounted warnings / phantom dismissals.
@@ -598,6 +601,8 @@ export default function AppPage() {
         </div>
       </header>
 
+      <NetworkMismatchBanner />
+
       {/* Main content renders only AFTER client hydration. Pre-hydration we
           paint a neutral skeleton so the static HTML never shows the seed-only
           board — that was the "back to initial" flash during refresh.
@@ -610,7 +615,7 @@ export default function AppPage() {
           transition: "opacity .12s ease-out",
         }}
       >
-        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} />}
+        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {hydrated && view === "vault" && <VaultScreen settled={settled} repMap={repMap} />}
         {hydrated && view === "deal" && active && (
@@ -631,6 +636,7 @@ export default function AppPage() {
       {sealDraft && <SealCeremony order={sealDraft} onDone={finishSeal} onClose={() => setSealDraft(null)} />}
       {settleOrder && <SettleCeremony order={settleOrder} onDone={finishSettle} onClose={() => setSettleOrder(null)} />}
       {watchlistOpen && <WatchlistDrawer onClose={() => setWatchlistOpen(false)} />}
+      {profileAddr && <MakerProfileModal address={profileAddr} onClose={() => setProfileAddr(null)} />}
       <ToastStack toasts={toasts} onDismiss={(id) => setToasts((cur) => cur.filter((t) => t.id !== id))} />
     </div>
   );

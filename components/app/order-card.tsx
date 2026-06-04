@@ -9,12 +9,13 @@ import { MakerTag, Ghost } from "./shared";
 import ExpiryCountdown from "./expiry-countdown";
 
 export default function OrderCard({
-  order, isMine, onOpen, rep,
+  order, isMine, onOpen, rep, onMakerProfile,
 }: {
   order: Order;
   isMine: boolean;
   onOpen: (o: Order) => void;
   rep?: MakerStats | null;
+  onMakerProfile?: (addr: string) => void;
 }) {
   const stateBadge = {
     OPEN:     <Badge tone="open"   icon="lock">Sealed</Badge>,
@@ -60,7 +61,7 @@ export default function OrderCard({
       )}
       <div style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <MakerTag maker={order.maker} />
+          <MakerTag maker={order.maker} onClickProfile={onMakerProfile} />
           {/* Reputation chip — only renders when this maker has at least one
               prior on-chain settlement. Hidden for first-timers so it doesn't
               read as "zero reputation, distrust this maker". */}

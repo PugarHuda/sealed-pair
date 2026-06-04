@@ -11,12 +11,13 @@ import ActivityTicker from "@/components/app/activity-ticker";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export default function BoardScreen({
-  orders, role, onOpen, repMap,
+  orders, role, onOpen, repMap, onMakerProfile,
 }: {
   orders: Order[];
   role: "marina" | "theo";
   onOpen: (o: Order) => void;
   repMap?: Map<string, MakerStats>;
+  onMakerProfile?: (addr: string) => void;
 }) {
   const [side, setSide] = useState("ALL");
   const [q, setQ] = useState("");
@@ -122,6 +123,7 @@ export default function BoardScreen({
               isMine={isMineOrder(o)}
               onOpen={onOpen}
               rep={rep}
+              onMakerProfile={onMakerProfile}
             />
           );
         })}

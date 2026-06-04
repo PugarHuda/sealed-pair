@@ -13,6 +13,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, SUISCAN_HOST } from "@/lib/sui-orders";
 import { CounterOfferModal, CounterOffersPanel } from "@/components/app/counter-offer";
 import BlobInspector from "@/components/app/blob-inspector";
+import OrderTimeline from "@/components/app/order-timeline";
 
 const useTimeout = (fn: () => void, ms: number | null) => {
   useEffect(() => {
@@ -919,6 +920,9 @@ export default function DealScreen({
               isMaker={isMine}
             />
           )}
+
+          {/* Real on-chain lifetime — every event emitted for this order id. */}
+          <OrderTimeline orderId={order.orderObj} />
 
           <Card pad={18}>
             <div style={{ ...lblS, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

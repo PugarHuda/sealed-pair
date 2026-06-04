@@ -358,7 +358,7 @@ function eventToOrder(evt: RpcEvent): Order | null {
   // results for stablecoin → asset orders.
   const side = getSideHint(blobId) ?? inferSide(give, get);
   const base = makeOrder({
-    maker: { name: makerName, handle: shortAddr(p.maker), color: addrColor(p.maker) },
+    maker: { name: makerName, handle: shortAddr(p.maker), color: addrColor(p.maker), addr: p.maker },
     side,
     give,
     get,
@@ -607,6 +607,113 @@ export async function fetchMakerReputation(
   return map;
 }
 
+/* ============ Maker profile aggregation ============ */
+
+export type MakerProfile = {
+  address: string;
+  totalPosted: number;       // every OrderPosted event with this maker
+  totalSettled: number;      // count from OrderSettled join (maker side)
+  totalCancelled: number;    // OrderCancelled events touching maker's orders
+  lastActivityMs: number | null;
+  recentPosted: Array<{ orderId: string; pair: string; timestampMs: number; blobId: string }>;
+};
+
+/** Aggregate on-chain stats for a single maker. Fetches OrderPosted events
+ *  in bulk, filters client-side by maker address — cheap on volume but
+ *  costs one extra suix_queryEvents to capture cancellations. */
+export async function fetchMakerProfile(
+  address: string,
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+): Promise<MakerProfile> {
+  if (!SEALED_PAIR_PACKAGE_ID) {
+    return {
+      address, totalPosted: 0, totalSettled: 0, totalCancelled: 0,
+      lastActivityMs: null, recentPosted: [],
+    };
+  }
+  const targetLower = address.toLowerCase();
+  // 1. Posted events (filter by maker)
+  const postedRes = await fetch("/api/sui", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      method: "suix_queryEvents",
+      params: [
+        { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::OrderPosted` },
+        null, 100, true,
+      ],
+      network,
+    }),
+  }).catch(() => null);
+  let postedEvents: RpcEvent[] = [];
+  if (postedRes && postedRes.ok) {
+    const json = (await postedRes.json()) as { result?: QueryEventsResp };
+    postedEvents = (json.result?.data ?? []).filter((evt) => {
+      const p = evt.parsedJson as Partial<OrderPostedEvent>;
+      return p.maker?.toLowerCase() === targetLower;
+    });
+  }
+  // 2. Settled count — join via enrichSettledEvents which carries maker field
+  const settledEvents = await listSettledEvents({ network, limit: 100 });
+  const enriched = settledEvents.length > 0 ? await enrichSettledEvents(settledEvents, network) : [];
+  const mineSettled = enriched.filter((t) => t.maker.toLowerCase() === targetLower);
+  // 3. Cancelled events (touching maker's orders — we just look up by orderId)
+  let cancelledCount = 0;
+  try {
+    const res = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "suix_queryEvents",
+        params: [
+          { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::OrderCancelled` },
+          null, 100, true,
+        ],
+        network,
+      }),
+    });
+    if (res.ok) {
+      const json = (await res.json()) as { result?: QueryEventsResp };
+      const cancelledIds = new Set(
+        (json.result?.data ?? [])
+          .map((evt) => (evt.parsedJson as { order_id?: string }).order_id)
+          .filter(Boolean) as string[],
+      );
+      const myOrderIds = new Set(
+        postedEvents
+          .map((evt) => (evt.parsedJson as { order_id?: string }).order_id)
+          .filter(Boolean) as string[],
+      );
+      for (const id of cancelledIds) if (myOrderIds.has(id)) cancelledCount += 1;
+    }
+  } catch {/* ignore */ }
+  // 4. Last activity = max timestamp across all events for this maker
+  let lastActivityMs: number | null = null;
+  for (const evt of postedEvents) {
+    if (evt.timestampMs) lastActivityMs = Math.max(lastActivityMs ?? 0, Number(evt.timestampMs));
+  }
+  for (const t of mineSettled) {
+    // settledAtEpoch isn't a wall-clock; skip unless evt timestamp available
+  }
+  const recentPosted = postedEvents.slice(0, 6).map((evt) => {
+    const p = evt.parsedJson as Partial<OrderPostedEvent>;
+    return {
+      orderId: p.order_id ?? "",
+      pair: `${p.give_kind ?? "?"}/${p.get_kind ?? "?"}`,
+      timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+      blobId: decodeBytesField((evt.parsedJson as { blob_id?: unknown }).blob_id),
+    };
+  });
+  return {
+    address,
+    totalPosted: postedEvents.length,
+    totalSettled: mineSettled.length,
+    totalCancelled: cancelledCount,
+    lastActivityMs,
+    recentPosted,
+  };
+}
+
 /* ============ Wallet portfolio ============ */
 
 export type CoinBalance = {
@@ -681,6 +788,69 @@ export async function fetchWalletBalances(
   } catch {
     return [];
   }
+}
+
+/* ============ Per-order event timeline ============ */
+
+export type TimelineEvent = {
+  kind: "posted" | "locked" | "revealed" | "settled" | "cancelled";
+  txDigest: string;
+  timestampMs: number;
+};
+
+/** Fetch every event from the deployed package, filter to those touching
+ *  the given orderId, return chronologically. 5 RPC calls in parallel —
+ *  one per event type — which is acceptable for a single-order detail
+ *  view. Returns [] when the package isn't deployed. */
+export async function fetchOrderTimeline(
+  orderId: string,
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+  limitPerType = 100,
+): Promise<TimelineEvent[]> {
+  if (!SEALED_PAIR_PACKAGE_ID || !orderId) return [];
+  const idLower = orderId.toLowerCase();
+  const kinds: Array<{ suffix: string; kind: TimelineEvent["kind"] }> = [
+    { suffix: "OrderPosted", kind: "posted" },
+    { suffix: "OrderLocked", kind: "locked" },
+    { suffix: "OrderRevealed", kind: "revealed" },
+    { suffix: "OrderSettled", kind: "settled" },
+    { suffix: "OrderCancelled", kind: "cancelled" },
+  ];
+  const queryOne = async (k: typeof kinds[0]) => {
+    try {
+      const res = await fetch("/api/sui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: "suix_queryEvents",
+          params: [
+            { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::${k.suffix}` },
+            null, limitPerType, true,
+          ],
+          network,
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { result?: QueryEventsResp };
+      const events = json.result?.data ?? [];
+      const matches: TimelineEvent[] = [];
+      for (const evt of events) {
+        const p = evt.parsedJson as { order_id?: string };
+        if (p.order_id?.toLowerCase() === idLower) {
+          matches.push({
+            kind: k.kind,
+            txDigest: evt.id.txDigest,
+            timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+          });
+        }
+      }
+      return matches;
+    } catch {
+      return [];
+    }
+  };
+  const all = (await Promise.all(kinds.map(queryOne))).flat();
+  return all.sort((a, b) => a.timestampMs - b.timestampMs);
 }
 
 /* ============ Recent activity (multi-event merged feed) ============ */
