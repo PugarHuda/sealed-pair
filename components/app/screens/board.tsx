@@ -133,8 +133,7 @@ export default function BoardScreen({
                 <span
                   style={{
                     display: "inline-flex",
-                    transition: "transform .4s",
-                    transform: refreshing ? "rotate(360deg)" : "none",
+                    animation: refreshing ? "spin .6s linear infinite" : undefined,
                   }}
                 >
                   <Icon name="bolt" size={13} sw={2.4} />
@@ -237,7 +236,9 @@ function MatchingPanel({ orders, walletShort, onSelectPair }: { orders: Order[];
   // Aggregate counts per pair (combining both sides into one row).
   const pairs = new Map<string, { give: string; get: string; sells: number; buys: number; escrowSumMist: bigint }>();
   for (const o of orders) {
-    if (!o.orderObj.startsWith("0x")) continue; // ignore demo seeds
+    // Count both live + seed orders so the depth view doesn't appear empty
+    // before live data lands. Escrow sum still only adds live orders below
+    // (seeds have no escrowRequiredMist).
     const k = `${o.give}/${o.get}`;
     const cur = pairs.get(k) ?? { give: o.give, get: o.get, sells: 0, buys: 0, escrowSumMist: 0n };
     if (o.side === "BUY") cur.buys += 1; else cur.sells += 1;

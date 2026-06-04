@@ -185,12 +185,15 @@ function PortfolioMenu({
               <div style={{ fontSize: 12, color: "var(--text-faint)" }}>No coins held on this network.</div>
             )}
             {!loading && balances.length > 0 && (() => {
-              // If SUI balance < 1 SUI on devnet/testnet, surface a faucet
-              // link so users on the demo can self-serve. Mainnet has no
-              // faucet — hide the prompt there.
-              const sui = balances.find((b) => b.symbol === "SUI");
+              // Surface a faucet link when SUI balance < 1 SUI on
+              // devnet/testnet. Lookup uses BOTH symbol AND coinType so a
+              // future symbol-derivation change can't hide the prompt
+              // (or worse, always show it on a fully-funded wallet).
+              const sui = balances.find(
+                (b) => b.symbol === "SUI" || b.coinType.endsWith("::sui::SUI"),
+              );
               const suiMist = sui ? BigInt(sui.totalBalance || "0") : 0n;
-              const lowOnSui = suiMist < 1_000_000_000n; // < 1 SUI
+              const lowOnSui = suiMist < 1_000_000_000n;
               const faucetHost =
                 SUI_NETWORK_FOR_EVENTS === "mainnet" ? null :
                 SUI_NETWORK_FOR_EVENTS === "testnet" ? "https://faucet.sui.io/?network=testnet" :
@@ -204,7 +207,7 @@ function PortfolioMenu({
                   style={{
                     display: "inline-flex", alignItems: "center", justifyContent: "space-between",
                     gap: 8,
-                    marginBottom: 4,
+                    marginTop: 6,
                     padding: "8px 12px",
                     background: "color-mix(in oklab, var(--warn) 14%, transparent)",
                     border: "1px solid var(--warn)",

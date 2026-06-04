@@ -464,10 +464,11 @@ export default function AppPage() {
           setView("deal");
           return;
         }
-        // Order not in local state yet — defer routing via the same
-        // pendingDeepLink path used on initial mount, so the next poll
-        // populates the order and the existing effect opens the deal room.
+        // Order not in local state yet — defer routing via pendingDeepLink
+        // AND fire a manual refresh so the deal room opens within seconds
+        // rather than waiting for the 30s interval to catch up.
         setPendingDeepLink(orderQ.toLowerCase());
+        void refreshLiveOrders();
         return;
       }
       if (viewQ === "deal" || viewQ === "create" || viewQ === "vault" || viewQ === "board") {
