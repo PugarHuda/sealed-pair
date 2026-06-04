@@ -15,10 +15,17 @@ export async function GET(
   }
   try {
     const { bytes, aggregator } = await walrusRead(blobId);
+    // Hardening — Walrus blobs are arbitrary user-uploaded bytes. Force
+    // every defensive header so a malicious uploader can't ship HTML / JS
+    // / SVG that browsers would execute on our first-party origin (and
+    // exfiltrate localStorage hints, cookies, etc.).
     return new NextResponse(bytes, {
       status: 200,
       headers: {
         "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="blob-${blobId.slice(0, 16)}.bin"`,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
         "Content-Length": String(bytes.byteLength),
         "X-Walrus-Aggregator": aggregator,
         // Walrus is content-addressed — safe to cache forever.

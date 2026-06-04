@@ -33,12 +33,23 @@ export async function GET(
         signal: AbortSignal.timeout(12_000),
       });
       if (res.ok) {
-        // Re-stream the body to the client, preserving content-type.
         const buf = Buffer.from(await res.arrayBuffer());
+        // Walrus blobs are arbitrary user-uploaded bytes. We never want
+        // them rendered on our first-party origin — a malicious uploader
+        // could ship HTML / JS / SVG and pivot via XSS to drain
+        // localStorage (sealedpair:* hints) or hijack the session.
+        // Defense in depth:
+        //  - Pin Content-Type to application/octet-stream (ignore upstream)
+        //  - Force download with Content-Disposition: attachment
+        //  - Block MIME sniffing
+        //  - Sandbox via CSP (default-src 'none')
         return new NextResponse(buf, {
           status: 200,
           headers: {
-            "Content-Type": res.headers.get("content-type") ?? "application/octet-stream",
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": `attachment; filename="blob-${objectId.slice(2, 14)}.bin"`,
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
             "X-Walrus-Aggregator": new URL(base).host,
             "X-Walrus-Storage-Object": objectId,
             "Access-Control-Allow-Origin": "*",
