@@ -46,7 +46,8 @@
     },
     "tatum-official": {
       "transport": "sse",
-      "description": "Tatum's official MCP server for general Sui (and 100+ chain) RPC access. Compose alongside sealed-pair tools for the broadest blockchain coverage in one config. Requires your Tatum API key.",
+      "optional": true,
+      "description": "Tatum's official MCP server for general Sui (and 100+ chain) RPC access. Compose alongside sealed-pair tools for the broadest blockchain coverage in one config. Requires your own Tatum API key set in the TATUM_API_KEY env variable BEFORE starting your MCP client — if unset, omit this server entry to avoid noisy 401s from upstream.",
       "url": "https://api.tatum.io/mcp",
       "auth": { "type": "header", "headerName": "x-api-key", "valueEnv": "TATUM_API_KEY" },
       "docs": "https://docs.tatum.io/docs/mcp-server"

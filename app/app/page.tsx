@@ -506,6 +506,7 @@ export default function AppPage() {
         if (sealDraft) { setSealDraft(null); return; }
         if (settleOrder) { setSettleOrder(null); return; }
         if (profileAddr) { setProfileAddr(null); return; }
+        if (inboxOpen) { setInboxOpen(false); return; }
         if (watchlistOpen) { setWatchlistOpen(false); return; }
         return;
       }
@@ -519,7 +520,7 @@ export default function AppPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sealDraft, settleOrder, profileAddr, watchlistOpen, view, refreshLiveOrders]);
+  }, [sealDraft, settleOrder, profileAddr, watchlistOpen, inboxOpen, view, refreshLiveOrders]);
 
   // Browser back/forward arrows: pop the most recent history entry, then
   // reconstruct app state from the URL. Without this listener, hitting
@@ -768,9 +769,13 @@ export default function AppPage() {
           walletAddr={account.address}
           onClose={() => setInboxOpen(false)}
           onOpenOrder={(orderId) => {
-            const o = orders.find((x) => x.orderObj === orderId);
+            // Sui Move emits order ids in lowercase but on-chain object
+            // ids can be returned in mixed case from different RPC paths.
+            // Normalize to keep the inbox click reliable across both.
+            const lower = orderId.toLowerCase();
+            const o = orders.find((x) => x.orderObj.toLowerCase() === lower);
             if (o) openDeal(o);
-            else setPendingDeepLink(orderId.toLowerCase());
+            else setPendingDeepLink(lower);
           }}
         />
       )}

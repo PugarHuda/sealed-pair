@@ -4,7 +4,7 @@
 // orderIds + localStorage counter-offers. One screen, one glance.
 
 import { useEffect, useState } from "react";
-import { fetchMakerInbox, InboxItem, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
+import { fetchMakerInbox, InboxItem, SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
 import { short } from "@/lib/data";
 import { Btn, Card } from "@/components/ui/primitives";
 import Icon from "@/components/ui/icon";
