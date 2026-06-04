@@ -292,7 +292,7 @@ export function SealCeremony({
           } catch (e) {
             // Wallet rejected or chain error — degrade to demo mode for this step
             // but keep the Walrus blob (the sealed commitment) so the order still flows.
-            console.warn("[seal] on-chain register failed, falling back to demo:", e);
+            console.debug("[seal] on-chain register failed, falling back to demo:", e);
             await sleep(700);
           }
         } else {

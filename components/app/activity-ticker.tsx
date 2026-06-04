@@ -40,9 +40,45 @@ export default function ActivityTicker() {
     };
   }, []);
 
-  if (items.length === 0) return null;
   // Void-reference now so the timeAgo strings re-render every clock tick.
   void now;
+  if (items.length === 0) {
+    return (
+      <div
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border-soft)",
+          borderRadius: "var(--r-md)",
+          padding: "10px 14px",
+          marginBottom: 18,
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            fontFamily: "var(--font-display)", fontWeight: 800,
+            fontSize: 12.5, color: "var(--accent-2)",
+            letterSpacing: ".06em", textTransform: "uppercase",
+            flex: "0 0 auto",
+          }}
+        >
+          <span
+            style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: "var(--text-faint)",
+            }}
+          />
+          Live tape
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
+          Waiting for the next on-chain event — seal a quote or lock an escrow to bring it to life.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

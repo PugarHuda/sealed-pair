@@ -436,7 +436,7 @@ export default function DealScreen({
         }
       }
     } catch (e) {
-      console.warn("[reveal] decrypt skipped:", e);
+      console.debug("[reveal] decrypt skipped:", e);
     }
     if (!foundKey) setDecryptFailed(true);
 

@@ -45,7 +45,19 @@ export default function OrderTimeline({ orderId }: { orderId: string }) {
   }, [orderId]);
 
   if (!orderId.startsWith("0x")) return null;
-  if (loading) return null;
+  if (loading) {
+    return (
+      <Card pad={18}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <Icon name="clock" size={15} style={{ color: "var(--accent)" }} />
+          <div style={{ ...lblS, fontSize: 11.5 }}>On-chain lifetime</div>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
+          Fetching on-chain events from 5 parallel queries…
+        </div>
+      </Card>
+    );
+  }
   if (events.length === 0) return null;
 
   return (

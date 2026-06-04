@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { Order } from "@/lib/types";
 import { short, VOLUME_STATS } from "@/lib/data";
+import { walrusBlobUrl } from "@/lib/walrus-urls";
 import { Card, Badge, Mono } from "@/components/ui/primitives";
 import { Pair } from "@/components/ui/asset";
 import Icon, { IconName } from "@/components/ui/icon";
@@ -213,7 +214,7 @@ function UnifiedRow({ trade, live }: { trade: SettledTrade & { code?: string }; 
       escrow: trade.escrowDisplayLabel,
       escrowRequiredMist: trade.escrowRequiredMist,
       suiScanUrl: trade.txDigest ? `${SUISCAN_HOST}/tx/${trade.txDigest}` : null,
-      walrusAggregatorUrl: `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${trade.blobId}`,
+      walrusAggregatorUrl: walrusBlobUrl(trade.blobId),
       issuedAt: new Date().toISOString(),
       live: !!live,
     };
@@ -409,7 +410,21 @@ function DeployedContractPanel() {
   }, []);
 
   if (!SEALED_PAIR_PACKAGE_ID) return null;
-  if (loading) return null;
+  if (loading) {
+    return (
+      <Card pad={20} style={{ marginBottom: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+          <Icon name="anchor" size={16} style={{ color: "var(--accent-2)" }} />
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15 }}>
+            Deployed contract · live introspection
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
+          Introspecting deployed module via sui_getNormalizedMoveModule…
+        </div>
+      </Card>
+    );
+  }
   if (!mod) return null;
 
   const funcs = Object.entries(mod.exposedFunctions || {});
@@ -509,7 +524,7 @@ function CsvExportButton({
         t.txDigest || "", t.settledAtEpoch || "", t.maker || "", t.taker || "",
         t.give, t.get, t.escrowDisplayLabel,
         t.txDigest ? `${SUISCAN_HOST}/tx/${t.txDigest}` : "",
-        `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${t.blobId}`,
+        walrusBlobUrl(t.blobId),
       ].map(escape).join(","));
     };
     liveTrades.forEach((t) => writeRow(t, "live"));

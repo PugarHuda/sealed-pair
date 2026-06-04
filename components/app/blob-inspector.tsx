@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { Btn, Card } from "@/components/ui/primitives";
 import Icon from "@/components/ui/icon";
 
-const AGGREGATOR_BASE = "https://aggregator.walrus-testnet.walrus.space/v1/blobs";
+import { walrusBlobUrl } from "@/lib/walrus-urls";
 
 function hex(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join(" ");
@@ -198,7 +198,7 @@ export default function BlobInspector({
 
           <div style={{ padding: "14px 26px 22px", display: "flex", gap: 10, borderTop: "1px solid var(--border-soft)" }}>
             <a
-              href={`${AGGREGATOR_BASE}/${blobId}`}
+              href={walrusBlobUrl(blobId)}
               target="_blank"
               rel="noopener noreferrer"
               style={{

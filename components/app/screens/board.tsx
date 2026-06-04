@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { PERSONAS, short } from "@/lib/data";
 import type { Order } from "@/lib/types";
-import type { MakerStats } from "@/lib/sui-orders";
+import { SUI_NETWORK_FOR_EVENTS, type MakerStats } from "@/lib/sui-orders";
 import { Segmented, inputStyle } from "@/components/ui/primitives";
 import Icon from "@/components/ui/icon";
 import { PageHead } from "@/components/app/shared";
@@ -90,7 +90,7 @@ export default function BoardScreen({
                 background: "var(--good)", boxShadow: "0 0 8px var(--good)", display: "inline-block",
               }}
             />{" "}
-            Live · Sui mainnet
+            Live · Sui {SUI_NETWORK_FOR_EVENTS}
           </>
         }
         title="RFQ Board"

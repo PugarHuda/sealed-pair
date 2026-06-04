@@ -188,7 +188,26 @@ export function CounterOffersPanel({
     return () => { cancelled = true; };
   }, [offers]);
 
-  if (offers.length === 0) return null;
+  // For makers, surface the panel even when empty so they know counters
+  // can be received here. Takers see the "Counter-offer instead →" button
+  // elsewhere, so the empty panel adds no signal for them — skip it.
+  if (offers.length === 0) {
+    if (!isMaker) return null;
+    return (
+      <Card pad={18}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
+          <Icon name="bolt" size={16} style={{ color: "var(--text-faint)" }} />
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15 }}>
+            Counter-offers
+          </div>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
+          No counter-offers yet. Takers can propose alternate terms from the Deal Room —
+          you&apos;ll see Accept / Reject actions here when they do.
+        </div>
+      </Card>
+    );
+  }
 
   const refresh = () => setOffers(listCounterOffers(orderId));
 

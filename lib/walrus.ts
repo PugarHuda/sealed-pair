@@ -29,6 +29,10 @@ const AGGREGATORS: Record<WalrusNetwork, string[]> = {
 export const DEFAULT_WALRUS_NETWORK: WalrusNetwork =
   (process.env.WALRUS_NETWORK as WalrusNetwork) || "testnet";
 
+// Client-safe URL helpers live in `lib/walrus-urls.ts` so React components
+// can import them without dragging this server-only module into the
+// browser bundle.
+
 /** Response shape from publisher when storing a blob. */
 export type StoreResponse = {
   newlyCreated?: {
