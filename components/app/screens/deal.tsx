@@ -725,13 +725,19 @@ export default function DealScreen({
                     </a>
                   </div>
                 )}
-                <Btn full variant="primary" icon="user" onClick={() => onRoleSwitch?.("theo")}>
-                  View as taker (Theo) →
-                </Btn>
+                {/* Persona toggle is a pre-wallet demo artifact — when a
+                    real wallet is connected, the maker is `account.address`,
+                    not a Marina/Theo persona. Hide the button to avoid
+                    the misleading "View as Theo" copy. */}
+                {!account && (
+                  <Btn full variant="primary" icon="user" onClick={() => onRoleSwitch?.("theo")}>
+                    View as taker (Theo) →
+                  </Btn>
+                )}
                 <Btn
                   full
                   variant="quiet"
-                  style={{ marginTop: 8 }}
+                  style={account ? {} : { marginTop: 8 }}
                   disabled={cancelling || !!cancelDigest}
                   onClick={cancelOffer}
                 >
