@@ -237,7 +237,14 @@ export default function AppPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const target = params.get("order");
-      if (target) setPendingDeepLink(target.toLowerCase());
+      if (target) {
+        setPendingDeepLink(target.toLowerCase());
+      } else {
+        const viewQ = params.get("view");
+        if (viewQ === "create" || viewQ === "vault") {
+          setView(viewQ);
+        }
+      }
     }
   }, []);
 
@@ -372,17 +379,72 @@ export default function AppPage() {
       ),
     );
 
+  // Build the URL for a given in-app state so browser back/forward work.
+  // The board is the canonical "/app" with no query; everything else gets
+  // an explicit `?view=` or `?order=` so refreshing keeps the user in
+  // place. Returns the path so callers can also pushState consistently.
+  const urlFor = (v: View, orderObj?: string) => {
+    if (v === "board") return "/app";
+    if (v === "deal" && orderObj && orderObj.startsWith("0x")) {
+      return `/app?order=${orderObj}`;
+    }
+    return `/app?view=${v}`;
+  };
+
   const openDeal = (o: Order) => {
     setActiveId(o.id);
     setView("deal");
     window.scrollTo(0, 0);
+    if (typeof window !== "undefined") {
+      const next = urlFor("deal", o.orderObj);
+      // Don't push when the URL is already what we want — e.g. after a
+      // deep-link arrival the entry URL already matches.
+      if (window.location.pathname + window.location.search !== next) {
+        history.pushState({ view: "deal", orderId: o.orderObj, id: o.id }, "", next);
+      }
+    }
   };
 
   const goNav = (id: View) => {
     setActiveId(null);
     setView(id);
     window.scrollTo(0, 0);
+    if (typeof window !== "undefined") {
+      const next = urlFor(id);
+      if (window.location.pathname + window.location.search !== next) {
+        history.pushState({ view: id }, "", next);
+      }
+    }
   };
+
+  // Browser back/forward arrows: pop the most recent history entry, then
+  // reconstruct app state from the URL. Without this listener, hitting
+  // 'back' from any in-app view drops the user all the way to the marketing
+  // landing page (the only real URL change in their browser history).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPop = () => {
+      const params = new URLSearchParams(window.location.search);
+      const orderQ = params.get("order");
+      const viewQ = (params.get("view") as View | null) ?? "board";
+      if (orderQ) {
+        const match = orders.find((o) => o.orderObj.toLowerCase() === orderQ.toLowerCase());
+        if (match) {
+          setActiveId(match.id);
+          setView("deal");
+          window.scrollTo(0, 0);
+          return;
+        }
+      }
+      if (viewQ === "deal" || viewQ === "create" || viewQ === "vault" || viewQ === "board") {
+        setActiveId(null);
+        setView(viewQ);
+        window.scrollTo(0, 0);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [orders]);
 
   /* seal flow */
   const beginSeal = (draft: CreateDraft) => {
@@ -410,8 +472,7 @@ export default function AppPage() {
       setOrders((os) => [sealed, ...os]);
     }
     setSealDraft(null);
-    setView("board");
-    window.scrollTo(0, 0);
+    goNav("board");
     // Fire two short follow-up polls so the user's real on-chain order shows
     // up within a few seconds — events take ~1-3s to be indexable by the
     // gateway, and the regular 30s tick is too slow to feel responsive.
@@ -448,8 +509,7 @@ export default function AppPage() {
       });
     }
     setSettleOrder(null);
-    setView("vault");
-    window.scrollTo(0, 0);
+    goNav("vault");
   };
 
   return (
