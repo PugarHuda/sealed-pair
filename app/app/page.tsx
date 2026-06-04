@@ -18,7 +18,7 @@ import NetworkMismatchBanner from "@/components/app/network-mismatch";
 import OnboardingHint from "@/components/app/onboarding-hint";
 import PoweredBy from "@/components/app/powered-by";
 import NetworkPill from "@/components/app/network-pill";
-import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
+import { listOpenOrders, packageStatus, rememberTargetHint, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
 import { useAutoConnectWallet, useCurrentAccount } from "@mysten/dapp-kit";
 import {
@@ -264,6 +264,21 @@ export default function AppPage() {
     }
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
+      // Optional ?install-hint=blobId:0xaddress — installs a target-taker
+      // hint for a seeded private order so its F5 visibility gating
+      // triggers without manually editing localStorage. Used by the seed
+      // script for the `private` case.
+      const installHint = params.get("install-hint");
+      if (installHint) {
+        const [blobId, addr] = installHint.split(":");
+        if (blobId && /^0x[0-9a-fA-F]{64}$/.test(addr ?? "")) {
+          rememberTargetHint(blobId, addr);
+          // Strip the param so a refresh doesn't reinstall and the URL is clean.
+          const u = new URL(window.location.href);
+          u.searchParams.delete("install-hint");
+          window.history.replaceState({}, "", u.toString());
+        }
+      }
       const target = params.get("order");
       if (target) {
         setPendingDeepLink(target.toLowerCase());

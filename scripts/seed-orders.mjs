@@ -312,8 +312,10 @@ async function main() {
       const orderId = orderObj?.objectId ?? "?";
       console.log(`${GREEN}ok${RESET} digest ${DIM}${result.digest.slice(0, 12)}…${RESET}`);
       if (c.requiresTarget && TARGET_TAKER) {
-        console.log(`  ${DIM}note: target hint must be stored in browser localStorage`);
-        console.log(`        sealedpair:target-hints → { "${blobId}": "${TARGET_TAKER.toLowerCase()}" }${RESET}`);
+        const installUrl = `https://sealed-pair.vercel.app/app?install-hint=${blobId}:${TARGET_TAKER.toLowerCase()}`;
+        console.log(`  ${CYAN}target installs via:${RESET}`);
+        console.log(`    ${installUrl}`);
+        console.log(`  ${DIM}(open once with target wallet; auto-writes sealedpair:target-hints)${RESET}`);
       }
       created.push({
         case: c.name,
