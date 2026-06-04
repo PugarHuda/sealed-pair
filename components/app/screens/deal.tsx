@@ -1,5 +1,5 @@
 "use client";
-import { CSSProperties, useEffect, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import type { Order } from "@/lib/types";
 import { PERSONAS, short, fmt } from "@/lib/data";
 import { Badge, Btn, Card, Mono, Row } from "@/components/ui/primitives";
@@ -224,6 +224,16 @@ export default function DealScreen({
   const [reaping, setReaping] = useState(false);
   const [reapError, setReapError] = useState<string | null>(null);
   const [reapDigest, setReapDigest] = useState<string | null>(null);
+  // Unmount guard: long-running flows (fund, cancel, reap) await multiple
+  // network round-trips. If the user navigates away mid-flight, we must
+  // not call setPhase / setFundError on the dead component — and
+  // particularly must not call onUpdate, which mutates parent state for
+  // a card the user is no longer looking at.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   // Live "is this order past its deadline?" check — re-runs every minute.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   useEffect(() => {
@@ -303,6 +313,7 @@ export default function DealScreen({
         };
         const state = Number(json.result?.data?.content?.fields?.state ?? -1);
         if (state !== 0) {
+          if (!mountedRef.current) return;
           const label = state === 1 ? "LOCKED" : state === 2 ? "REVEALED" : state === 3 ? "SETTLED" : state === 4 ? "CANCELLED" : "unknown";
           setFundError(
             `Order is no longer OPEN on-chain (state=${label}). The board card is stale — refresh in a moment and pick a different sealed order.`,
@@ -354,8 +365,10 @@ export default function DealScreen({
         if (status !== "success") {
           throw new Error(full.effects?.status?.error ?? "Move execution aborted");
         }
+        if (!mountedRef.current) return;
         if (!lockTxDigest) setLockTxDigest(result.digest);
       } catch (e) {
+        if (!mountedRef.current) return;
         const msg = e instanceof Error ? e.message : "Lock + reveal failed";
         const hint =
           msg.includes("Insufficient") || msg.toLowerCase().includes("insufficient gas") || msg.toLowerCase().includes("balance")
@@ -428,6 +441,7 @@ export default function DealScreen({
 
     // Match the existing policy-check animation runtime (~2.5s of streaming lines)
     await new Promise((r) => setTimeout(r, 2600));
+    if (!mountedRef.current) return;          // user navigated away mid-flight
     onUpdate(order.id, revealPatch);
     setPhase("revealed");
   };

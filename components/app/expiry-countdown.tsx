@@ -22,23 +22,18 @@ export function formatRemaining(ms: number): string {
 }
 
 export default function ExpiryCountdown({ targetMs }: { targetMs: number }) {
-  const [now, setNow] = useState<number>(() => targetMs);
-  // Re-evaluate tick interval whenever crossing the 1-hour boundary so a
-  // long-running card that just slipped under 1h starts ticking by second.
-  // (The previous one-shot interval at mount stayed at 60s forever once
-  // chosen, missing the urgency switch entirely.)
-  const [urgentMode, setUrgentMode] = useState<boolean>(() => targetMs - Date.now() < HOUR_MS);
+  // Init from the real clock so the first paint never shows "Expired" while
+  // waiting for the first interval tick. (Previously initialised to
+  // targetMs, giving remaining=0 on first render.)
+  const [now, setNow] = useState<number>(() => Date.now());
+  // One 1-second tick for everyone. ~10 renders/s on a busy board is cheap,
+  // and avoids the re-render storm where switching the interval period at
+  // the 1-hour boundary triggered its own cascade.
   useEffect(() => {
     setNow(Date.now());
-    const interval = urgentMode ? 1_000 : 60_000;
-    const t = setInterval(() => {
-      const next = Date.now();
-      setNow(next);
-      const shouldBeUrgent = targetMs - next < HOUR_MS;
-      if (shouldBeUrgent !== urgentMode) setUrgentMode(shouldBeUrgent);
-    }, interval);
+    const t = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(t);
-  }, [targetMs, urgentMode]);
+  }, [targetMs]);
 
   const remaining = targetMs - now;
   const urgent = remaining < HOUR_MS && remaining > 0;

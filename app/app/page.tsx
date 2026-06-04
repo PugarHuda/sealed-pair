@@ -1,6 +1,6 @@
 "use client";
 // App shell + state machine, ported from main.jsx (Lagoon / top nav / decrypt / coral pip locked).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Order } from "@/lib/types";
 import {
   PERSONAS, SEED_ORDERS, SETTLED_SEED, makeOrder, digest, short,
@@ -224,6 +224,15 @@ export default function AppPage() {
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const account = useCurrentAccount();
+  // Track pending toast auto-dismiss timers so we can cancel them on
+  // unmount and avoid setState-on-unmounted warnings / phantom dismissals.
+  const dismissTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => {
+    return () => {
+      dismissTimersRef.current.forEach(clearTimeout);
+      dismissTimersRef.current = [];
+    };
+  }, []);
   // While dApp Kit's autoConnect is in 'idle' we don't yet know whether the
   // user has a saved wallet. Treat that window as "wallet unknown" so we
   // don't flash the persona toggle before the wallet resolves.
@@ -315,11 +324,15 @@ export default function AppPage() {
         persistSeenOrderIds(newlySeen);
         if (fired.length > 0) {
           setToasts((cur) => [...fired, ...cur].slice(0, 6));
-          // Auto-dismiss each new toast after 8s.
+          // Auto-dismiss each new toast after 8s; track the timer so an
+          // unmount cancels it. Without tracking, the closure can fire
+          // after the component is gone and trigger phantom dismissals.
           fired.forEach((t) => {
-            setTimeout(() => {
+            const handle = setTimeout(() => {
               setToasts((cur) => cur.filter((x) => x.id !== t.id));
+              dismissTimersRef.current = dismissTimersRef.current.filter((h) => h !== handle);
             }, 8000);
+            dismissTimersRef.current.push(handle);
           });
         }
       } else {
@@ -434,6 +447,7 @@ export default function AppPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onPop = () => {
+      window.scrollTo(0, 0);
       const params = new URLSearchParams(window.location.search);
       const orderQ = params.get("order");
       const viewQ = (params.get("view") as View | null) ?? "board";
@@ -442,14 +456,17 @@ export default function AppPage() {
         if (match) {
           setActiveId(match.id);
           setView("deal");
-          window.scrollTo(0, 0);
           return;
         }
+        // Order not in local state yet — defer routing via the same
+        // pendingDeepLink path used on initial mount, so the next poll
+        // populates the order and the existing effect opens the deal room.
+        setPendingDeepLink(orderQ.toLowerCase());
+        return;
       }
       if (viewQ === "deal" || viewQ === "create" || viewQ === "vault" || viewQ === "board") {
         setActiveId(null);
         setView(viewQ);
-        window.scrollTo(0, 0);
       }
     };
     window.addEventListener("popstate", onPop);
