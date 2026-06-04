@@ -375,6 +375,7 @@ export default function AppPage() {
       createdAgo: "just now",
     });
     o.terms.note = draft.terms.note;
+    if (draft.targetTaker) o.targetTaker = draft.targetTaker;
     setSealDraft(o);
   };
   const finishSeal = (patch: { blobId: string; publisher?: string; txDigest?: string; escrowRequiredMist?: string }) => {

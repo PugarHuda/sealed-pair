@@ -26,7 +26,7 @@ export default function OrderCard({
   const sideTone = order.side === "SELL" ? "var(--accent-2)" : "var(--accent)";
 
   return (
-    <Card hover pad={0} onClick={() => onOpen(order)} style={{ overflow: "hidden", position: "relative" }}>
+    <Card hover pad={0} onClick={() => onOpen(order)} style={{ overflow: "hidden", position: "relative", borderColor: order.targetTaker ? "var(--seal)" : undefined }}>
       {isMine && (
         <div
           style={{
@@ -37,6 +37,24 @@ export default function OrderCard({
           }}
         >
           Your offer
+        </div>
+      )}
+      {/* Private/targeted indicator — outranks the 'Your offer' ribbon when
+          both apply (maker viewing their own private order). */}
+      {order.targetTaker && (
+        <div
+          style={{
+            position: "absolute", top: 0, left: 0,
+            background: "var(--seal)", color: "var(--accent-ink)",
+            fontSize: 10.5, fontWeight: 800,
+            padding: "4px 11px",
+            borderBottomRightRadius: 12,
+            letterSpacing: ".06em", textTransform: "uppercase",
+            display: "inline-flex", alignItems: "center", gap: 5,
+          }}
+          title={`Private offer · only ${order.targetTaker.slice(0, 8)}…${order.targetTaker.slice(-4)} can fund`}
+        >
+          <Icon name="lock" size={10} sw={2.5} /> Private
         </div>
       )}
       <div style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>

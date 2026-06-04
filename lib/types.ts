@@ -47,6 +47,11 @@ export type Order = {
    *  OrderPosted event (live orders) or from create_offer (newly-sealed).
    *  String so it survives u64 -> JSON without precision loss. */
   escrowRequiredMist?: string;
+  /** Lower-cased Sui address (or "" / undefined for public orders). When
+   *  set, the Board hides this card from non-target wallets and the Deal
+   *  Room disables the Fund button. Frontend-only gating until V2 puts
+   *  the allowlist on-chain. */
+  targetTaker?: string;
   createdAgo: string;
   expiresIn: string;
   settleDigest: string | null;

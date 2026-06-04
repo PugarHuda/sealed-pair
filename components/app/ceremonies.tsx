@@ -8,7 +8,7 @@ import Mascot from "@/components/mascot";
 import { encryptText, generateKey, stashKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch, rememberSideHint, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch, rememberSideHint, rememberTargetHint, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 
 /* ---------------- step runner ---------------- */
 function useSteps(steps: { ms: number }[], active: boolean, onComplete?: () => void) {
@@ -238,6 +238,10 @@ export function SealCeremony({
         // correct tag once the polling cycle picks this order up. Chain
         // doesn't store side — without this the heuristic owns it.
         rememberSideHint(blobId, order.side as "SELL" | "BUY");
+        // Same idea for targeted-audience: if the maker scoped this offer to
+        // a specific taker we keep the address pinned to the blobId so the
+        // Board can re-apply the gating after a refresh.
+        if (order.targetTaker) rememberTargetHint(blobId, order.targetTaker);
         await sleep(400);
         setDone(2);
 

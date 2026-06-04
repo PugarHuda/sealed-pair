@@ -123,6 +123,41 @@ export function getSideHint(blobId: string): "SELL" | "BUY" | null {
   return readSideHints()[blobId] ?? null;
 }
 
+/* ----- targeted-audience hints ----------------------------------------- */
+
+const TARGET_HINT_KEY = "sealedpair:target-hints";
+type TargetHints = Record<string, string>;
+
+function readTargetHints(): TargetHints {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(TARGET_HINT_KEY);
+    return raw ? (JSON.parse(raw) as TargetHints) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Remember that an order is targeted at a specific taker address. Keyed by
+ *  Walrus blobId because that's available before the on-chain orderObj id
+ *  is known. Stored lower-cased for case-insensitive matching downstream. */
+export function rememberTargetHint(blobId: string, target: string | null): void {
+  if (typeof window === "undefined" || !blobId) return;
+  try {
+    const cur = readTargetHints();
+    if (target) cur[blobId] = target.trim().toLowerCase();
+    else delete cur[blobId];
+    window.localStorage.setItem(TARGET_HINT_KEY, JSON.stringify(cur));
+  } catch {
+    /* quota — best-effort */
+  }
+}
+
+export function getTargetHint(blobId: string): string | null {
+  if (!blobId) return null;
+  return readTargetHints()[blobId] ?? null;
+}
+
 /* ============ on-chain event mirrors ============ */
 
 /** Mirrors `sealed_pair::order::OrderPosted`. */
@@ -335,6 +370,7 @@ function eventToOrder(evt: RpcEvent): Order | null {
     orderObj: String(p.order_id),
     sizeBand: bandFor(approxGiveAmount),
     escrowRequiredMist: escrowMistStr,
+    targetTaker: getTargetHint(blobId) ?? undefined,
   };
 }
 

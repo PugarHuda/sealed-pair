@@ -239,6 +239,16 @@ export default function DealScreen({
   const requiredEscrowMist = onChainEnabled && order.escrowRequiredMist
     ? BigInt(order.escrowRequiredMist)
     : null;
+  // Private-offer gating: maker scoped this order to a specific wallet. We
+  // block the Fund action client-side. V2 would enforce this inside Move's
+  // lock_with_escrow so a CLI bypass also reverts.
+  const walletLower = account?.address?.toLowerCase() ?? null;
+  const targetMismatch =
+    !!order.targetTaker &&
+    !isMine &&
+    (!walletLower || walletLower !== order.targetTaker);
+  const targetedForMe =
+    !!order.targetTaker && !!walletLower && walletLower === order.targetTaker;
   // Reserve ~0.05 SUI for gas. If escrow + reserve > balance, can't fund.
   const GAS_RESERVE_MIST = 50_000_000n;
   const balanceIssue =
@@ -498,16 +508,55 @@ export default function DealScreen({
                     Funding escrow is what satisfies the Seal policy — it’s the key that unlocks the terms. Cancel after reveal and you forfeit the fee.
                   </div>
                 </div>
+                {targetMismatch && (
+                  <div
+                    className="fade-up"
+                    style={{
+                      padding: "10px 12px",
+                      background: "color-mix(in oklab, var(--seal) 18%, transparent)",
+                      border: "1px solid var(--seal)",
+                      borderRadius: "var(--r-sm)",
+                      color: "var(--seal-glow)",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      marginBottom: 12,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <b>Private offer.</b> Only{" "}
+                    <span className="mono">{(order.targetTaker || "").slice(0, 10)}…{(order.targetTaker || "").slice(-6)}</span>{" "}
+                    can fund this order.
+                  </div>
+                )}
+                {targetedForMe && (
+                  <div
+                    className="fade-up"
+                    style={{
+                      padding: "10px 12px",
+                      background: "color-mix(in oklab, var(--accent) 14%, transparent)",
+                      border: "1px solid var(--accent)",
+                      borderRadius: "var(--r-sm)",
+                      color: "var(--accent)",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Icon name="check" size={13} sw={2.6} /> Targeted at your wallet — exclusive deal.
+                  </div>
+                )}
                 <Btn
                   full
                   size="lg"
                   variant="seal"
                   icon="unlock"
-                  disabled={phase === "funding" || !!balanceIssue}
+                  disabled={phase === "funding" || !!balanceIssue || targetMismatch}
                   onClick={fund}
                 >
                   {phase === "funding"
                     ? "Funding…"
+                    : targetMismatch
+                    ? "Not for this wallet"
                     : balanceIssue
                     ? "Insufficient SUI for escrow"
                     : fundError

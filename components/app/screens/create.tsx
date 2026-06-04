@@ -50,6 +50,9 @@ export type CreateDraft = {
   terms: { amount: number; price: number; counter: number; give: AssetSym; get: AssetSym; minFill: number; note: string };
   sizeBand: string;
   expiry: string;
+  /** Optional Sui address. When set, only this wallet can fund/settle the
+   *  order. When omitted (empty), the offer is open to anyone. */
+  targetTaker?: string;
 };
 
 export default function CreateScreen({
@@ -65,9 +68,19 @@ export default function CreateScreen({
   const [price, setPrice] = useState<number | string>(3.92);
   const [expiry, setExpiry] = useState("12h");
   const [note, setNote] = useState("");
+  const [audience, setAudience] = useState<"ALL" | "PRIVATE">("ALL");
+  const [targetTaker, setTargetTaker] = useState("");
   const amt = Number(amount) || 0;
   const prc = Number(price) || 0;
   const counter = Math.round(amt * prc);
+
+  // Sui addresses are 32 raw bytes → "0x" + 64 hex chars. We're tolerant and
+  // just check the prefix + a reasonable hex length so paste-with-trailing-
+  // whitespace doesn't block the user; downstream code lower-cases for match.
+  const targetClean = targetTaker.trim().toLowerCase();
+  const targetLooksValid =
+    audience === "ALL" || (targetClean.startsWith("0x") && /^0x[0-9a-f]{40,64}$/.test(targetClean));
+  const targetError = audience === "PRIVATE" && targetTaker.length > 0 && !targetLooksValid;
 
   const draft: CreateDraft = {
     maker: role,
@@ -75,7 +88,9 @@ export default function CreateScreen({
     terms: { amount: amt, price: prc, counter, give, get, minFill: Math.round(amt * 0.25), note },
     sizeBand: bandFor(amt),
     expiry,
+    targetTaker: audience === "PRIVATE" && targetLooksValid ? targetClean : undefined,
   };
+  const canSeal = audience === "ALL" || (targetLooksValid && targetClean.length > 0);
 
   return (
     <div className="fade-up">
@@ -125,6 +140,41 @@ export default function CreateScreen({
               <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="settlement memo…" />
             </Field>
           </div>
+          {/* Audience picker — empty = public RFQ board, address = private 1-to-1 deal.
+              Frontend-only enforcement for the hackathon; V2 will move the
+              allowlist into the Order shared object so fund-checks happen
+              inside `lock_with_escrow` itself. */}
+          <Field label="Audience" hint="Empty = anyone can fund. Address = only that wallet.">
+            <Segmented
+              full
+              value={audience}
+              onChange={(v) => setAudience(v as "ALL" | "PRIVATE")}
+              options={[
+                { value: "ALL", label: "Open to everyone" },
+                { value: "PRIVATE", label: "Private — specific address" },
+              ]}
+            />
+          </Field>
+          {audience === "PRIVATE" && (
+            <Field label="Sell to (Sui address)">
+              <Input
+                value={targetTaker}
+                onChange={(e) => setTargetTaker(e.target.value)}
+                placeholder="0x…"
+                style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}
+              />
+              {targetError && (
+                <div style={{ fontSize: 12, color: "var(--bad)", marginTop: 6 }}>
+                  Doesn&apos;t look like a Sui address (expected 0x + 40–64 hex chars).
+                </div>
+              )}
+              {!targetError && targetClean.length > 0 && (
+                <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 6 }}>
+                  Only <span className="mono">{targetClean.slice(0, 10)}…{targetClean.slice(-6)}</span> will be able to fund this order.
+                </div>
+              )}
+            </Field>
+          )}
         </Card>
 
         {/* preview */}
@@ -147,8 +197,8 @@ export default function CreateScreen({
               <Row label={<span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--seal-glow)" }}><Icon name="lock" size={13} /> Counter-value</span>}><Ghost w={80} /></Row>
             </div>
           </Card>
-          <Btn size="lg" variant="seal" icon="lock" full onClick={() => onSeal(draft)}>
-            Seal &amp; post to Walrus
+          <Btn size="lg" variant="seal" icon="lock" full disabled={!canSeal} onClick={() => onSeal(draft)}>
+            {audience === "PRIVATE" && !targetLooksValid ? "Enter recipient address" : "Seal & post to Walrus"}
           </Btn>
           <div style={{ fontSize: 12.5, color: "var(--text-faint)", textAlign: "center", lineHeight: 1.5 }}>
             Encrypt → Walrus blobId (commitment) → Seal policy → Order object on Sui. ~4s, ~$0.02 in gas.

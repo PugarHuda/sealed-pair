@@ -32,10 +32,16 @@ export default function BoardScreen({
     const walletMine = walletShort != null && typeof o.maker !== "string" && o.maker.handle === walletShort;
     return personaMine || walletMine;
   };
+  const walletAddrLower = account?.address?.toLowerCase() ?? null;
   const filtered = orders.filter((o) => {
     if (o.state === "SETTLED") return false;
     if (side !== "ALL" && o.side !== side) return false;
     if (scope === "MINE" && !isMineOrder(o)) return false;
+    // Private/targeted orders: hide from non-target wallets. Maker still
+    // sees their own private orders (isMineOrder catches that branch).
+    if (o.targetTaker && !isMineOrder(o)) {
+      if (!walletAddrLower || walletAddrLower !== o.targetTaker) return false;
+    }
     if (q) {
       const mn = typeof o.maker === "string" ? PERSONAS[o.maker].name : o.maker.name;
       const hay = (o.give + o.get + o.code + mn).toLowerCase();
