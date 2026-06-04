@@ -11,17 +11,23 @@ import ActivityTicker from "@/components/app/activity-ticker";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export default function BoardScreen({
-  orders, role, onOpen, repMap, onMakerProfile,
+  orders, role, onOpen, repMap, onMakerProfile, initialPair,
 }: {
   orders: Order[];
   role: "marina" | "theo";
   onOpen: (o: Order) => void;
   repMap?: Map<string, MakerStats>;
   onMakerProfile?: (addr: string) => void;
+  /** Pre-applied pair filter from `/app?pair=SUI-USDC` deep-link. The Board
+   *  shows only orders matching this pair until the user clears the chip. */
+  initialPair?: string;
 }) {
   const [side, setSide] = useState("ALL");
   const [q, setQ] = useState("");
   const [scope, setScope] = useState<"ALL" | "MINE">("ALL");
+  // Hyphen-separated "GIVE-GET" matches the URL convention used by
+  // history.pushState below. Empty string = no pair filter.
+  const [pairFilter, setPairFilter] = useState<string>(initialPair?.toUpperCase() ?? "");
   const myHandle = PERSONAS[role]?.handle;
   const account = useCurrentAccount();
   // Wallet maker handles are stored as the shortened "0x…" form by
@@ -39,6 +45,7 @@ export default function BoardScreen({
     if (o.state === "SETTLED") return false;
     if (side !== "ALL" && o.side !== side) return false;
     if (scope === "MINE" && !isMineOrder(o)) return false;
+    if (pairFilter && `${o.give}-${o.get}` !== pairFilter) return false;
     // Private/targeted orders: hide from non-target wallets. Maker still
     // sees their own private orders (isMineOrder catches that branch).
     if (o.targetTaker && !isMineOrder(o)) {
@@ -103,13 +110,44 @@ export default function BoardScreen({
           </div>
         }
       />
+      {pairFilter && (
+        <div
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "6px 14px",
+            background: "color-mix(in oklab, var(--accent) 14%, transparent)",
+            border: "1px solid var(--accent)",
+            borderRadius: 99,
+            color: "var(--accent)",
+            fontSize: 13, fontWeight: 700,
+            marginBottom: 16,
+          }}
+        >
+          Pair filter: {pairFilter.replace("-", " → ")}
+          <button
+            onClick={() => setPairFilter("")}
+            style={{
+              background: "transparent", border: "none", color: "var(--accent)",
+              cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 4px",
+            }}
+            aria-label="Clear pair filter"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {/* Live activity ticker — merges OrderPosted + OrderSettled events,
           sorted by timestamp. Real on-chain data via suix_queryEvents. */}
       <ActivityTicker />
       {/* Matching opportunities: aggregate the currently-displayed orders
           (post-filters) into per-pair depth so makers see which pairs
-          actually have counterparties active. Real on-chain data — no mock. */}
-      <MatchingPanel orders={orders.filter((o) => o.state !== "SETTLED")} walletShort={walletShort} />
+          actually have counterparties active. Clicking a pair sets the
+          board filter so it doubles as a navigation surface. */}
+      <MatchingPanel
+        orders={orders.filter((o) => o.state !== "SETTLED")}
+        walletShort={walletShort}
+        onSelectPair={(pair) => setPairFilter(pair)}
+      />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
         {filtered.map((o) => {
           // Look up reputation by maker.handle (short address form), which is
@@ -144,17 +182,23 @@ export default function BoardScreen({
 /* Real aggregation of on-chain orders. No mock numbers — if no live  */
 /* orders exist, this panel renders nothing.                          */
 /* ------------------------------------------------------------------ */
-function MatchingPanel({ orders, walletShort }: { orders: Order[]; walletShort: string | null }) {
+function MatchingPanel({ orders, walletShort, onSelectPair }: { orders: Order[]; walletShort: string | null; onSelectPair?: (pair: string) => void }) {
   if (orders.length < 2) return null;
   type Key = string;
   const pairKey = (o: Order): Key => `${o.give}/${o.get}`;
   // Aggregate counts per pair (combining both sides into one row).
-  const pairs = new Map<string, { give: string; get: string; sells: number; buys: number }>();
+  const pairs = new Map<string, { give: string; get: string; sells: number; buys: number; escrowSumMist: bigint }>();
   for (const o of orders) {
     if (!o.orderObj.startsWith("0x")) continue; // ignore demo seeds
     const k = `${o.give}/${o.get}`;
-    const cur = pairs.get(k) ?? { give: o.give, get: o.get, sells: 0, buys: 0 };
+    const cur = pairs.get(k) ?? { give: o.give, get: o.get, sells: 0, buys: 0, escrowSumMist: 0n };
     if (o.side === "BUY") cur.buys += 1; else cur.sells += 1;
+    // Real escrow sum from on-chain Order.escrow_required. Only SUI-side
+    // escrows are summed here (the Move package locks escrow as a
+    // Balance<SUI>); other pairs contribute 0 until escrow generics ship.
+    if (o.escrowRequiredMist && /^\d+$/.test(o.escrowRequiredMist)) {
+      try { cur.escrowSumMist += BigInt(o.escrowRequiredMist); } catch { /* ignore */ }
+    }
     pairs.set(k, cur);
   }
   // Pairs the user has at least one order in — these are "your active pairs".
@@ -188,14 +232,20 @@ function MatchingPanel({ orders, walletShort }: { orders: Order[]; walletShort: 
         {ranked.map(([k, p]) => {
           const total = p.sells + p.buys;
           const mine = myPairKeys.has(k);
+          const pairKey = `${p.give}-${p.get}`;
           return (
-            <div
+            <button
               key={k}
+              type="button"
+              onClick={() => onSelectPair?.(pairKey)}
+              title={`Filter board to ${p.give} → ${p.get}`}
               style={{
                 padding: "10px 12px",
                 background: mine ? "color-mix(in oklab, var(--accent) 12%, var(--deep))" : "var(--deep)",
                 border: mine ? "1px solid var(--accent)" : "1px solid var(--border-soft)",
                 borderRadius: "var(--r-sm)",
+                cursor: onSelectPair ? "pointer" : "default",
+                textAlign: "left",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 700 }}>
@@ -209,7 +259,18 @@ function MatchingPanel({ orders, walletShort }: { orders: Order[]; walletShort: 
               <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
                 {total} active · {p.sells} sell · {p.buys} buy
               </div>
-            </div>
+              {p.escrowSumMist > 0n && (
+                <div
+                  style={{
+                    fontSize: 11, color: "var(--text-faint)", marginTop: 4,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                  title="Sum of escrow_required across all OPEN orders in this pair"
+                >
+                  Escrow pooled: {(Number(p.escrowSumMist) / 1e9).toFixed(2)} SUI
+                </div>
+              )}
+            </button>
           );
         })}
       </div>

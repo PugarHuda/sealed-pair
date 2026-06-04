@@ -20,6 +20,7 @@ import {
 } from "@/lib/sui-orders";
 import { Segmented } from "@/components/ui/primitives";
 import { useCurrentAccount } from "@mysten/dapp-kit";
+import ObjectExplorer from "@/components/app/object-explorer";
 
 function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: IconName; tone?: string }) {
   return (
@@ -128,6 +129,8 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
       {/* Real Move module introspection — RPC fetch of the deployed package's
           normalised module structure. Proves the contract is really on-chain. */}
       <DeployedContractPanel />
+      {/* Standalone Sui object explorer: paste any 0x... id, fetch live. */}
+      <ObjectExplorer />
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <h3 style={{ fontSize: 17, whiteSpace: "nowrap" }}>Settlement history</h3>
         <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>

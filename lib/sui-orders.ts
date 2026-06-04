@@ -320,7 +320,10 @@ export async function listOpenOrders(opts: {
     // Guard against a partial response: if the gateway returned fewer
     // objects than we asked for, the index-aligned filter would silently
     // drop valid orders from the tail. Fall back to candidates instead.
-    if (items.length !== candidates.length) return candidates;
+    if (items.length !== candidates.length) {
+      console.warn(`[listOpenOrders] partial multiGetObjects response (got ${items.length}/${candidates.length})`);
+      return candidates;
+    }
     return candidates.filter((_, i) => {
       const fields = items[i]?.data?.content?.fields;
       if (!fields) return false;          // object missing → it was deleted/never existed
@@ -530,6 +533,13 @@ export async function enrichSettledEvents(
       result?: Array<{ data?: { content?: { fields?: Record<string, unknown> } } }>;
     };
     const items = json.result ?? [];
+    // Mirror listOpenOrders' partial-response guard: index alignment is
+    // load-bearing here, so on a short response we'd silently misattribute
+    // fields from one settle event to another.
+    if (items.length !== events.length) {
+      console.warn(`[enrichSettledEvents] partial multiGetObjects response (got ${items.length}/${events.length})`);
+      return [];
+    }
     return events
       .map<SettledTrade | null>((evt, i) => {
         const fields = items[i]?.data?.content?.fields;
@@ -632,7 +642,8 @@ export async function fetchMakerProfile(
     };
   }
   const targetLower = address.toLowerCase();
-  // 1. Posted events (filter by maker)
+  // 1. Posted events (filter by maker) — let fetch errors bubble to the
+  // modal so the user sees the real reason instead of a silent zero count.
   const postedRes = await fetch("/api/sui", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -644,9 +655,10 @@ export async function fetchMakerProfile(
       ],
       network,
     }),
-  }).catch(() => null);
+  });
+  if (!postedRes.ok) throw new Error(`Posted events fetch failed (${postedRes.status})`);
   let postedEvents: RpcEvent[] = [];
-  if (postedRes && postedRes.ok) {
+  {
     const json = (await postedRes.json()) as { result?: QueryEventsResp };
     postedEvents = (json.result?.data ?? []).filter((evt) => {
       const p = evt.parsedJson as Partial<OrderPostedEvent>;
@@ -771,19 +783,24 @@ export async function fetchWalletBalances(
     return items
       .map<CoinBalance>((b) => {
         const { symbol, decimals } = describeCoin(b.coinType);
+        // Guard malformed balance strings — BigInt("") throws.
+        const balance = /^\d+$/.test(b.totalBalance) ? b.totalBalance : "0";
         return {
           coinType: b.coinType,
           symbol,
-          totalBalance: b.totalBalance,
-          display: formatBalance(b.totalBalance, decimals),
+          totalBalance: balance,
+          display: formatBalance(balance, decimals),
           coinObjectCount: b.coinObjectCount,
         };
       })
       .sort((a, b) => {
-        // SUI first, then everything else by raw balance desc
+        // SUI first, then everything else by raw balance desc. Use BigInt
+        // diff sign (not Number cast) — precision loss above 2^53 swaps
+        // the comparator's sign and yields garbage ordering.
         if (a.symbol === "SUI") return -1;
         if (b.symbol === "SUI") return 1;
-        return Number(BigInt(b.totalBalance) - BigInt(a.totalBalance));
+        const diff = BigInt(b.totalBalance) - BigInt(a.totalBalance);
+        return diff < 0n ? -1 : diff > 0n ? 1 : 0;
       });
   } catch {
     return [];

@@ -226,6 +226,7 @@ export default function AppPage() {
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [profileAddr, setProfileAddr] = useState<string | null>(null);
+  const [initialPair, setInitialPair] = useState<string | undefined>(undefined);
   const account = useCurrentAccount();
   // Track pending toast auto-dismiss timers so we can cancel them on
   // unmount and avoid setState-on-unmounted warnings / phantom dismissals.
@@ -267,6 +268,8 @@ export default function AppPage() {
           setView(viewQ);
         }
       }
+      const pairQ = params.get("pair");
+      if (pairQ) setInitialPair(pairQ);
     }
   }, []);
 
@@ -615,7 +618,7 @@ export default function AppPage() {
           transition: "opacity .12s ease-out",
         }}
       >
-        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} />}
+        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} initialPair={initialPair} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {hydrated && view === "vault" && <VaultScreen settled={settled} repMap={repMap} />}
         {hydrated && view === "deal" && active && (

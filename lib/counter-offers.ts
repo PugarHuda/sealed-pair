@@ -138,8 +138,15 @@ export async function decryptCounter(blobId: string): Promise<CounterTerms | nul
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
     const text = await decryptText(buf, key);
-    const parsed = JSON.parse(text) as CounterTerms;
-    return parsed;
+    const parsed = JSON.parse(text) as unknown;
+    if (
+      typeof parsed === "object" && parsed !== null &&
+      typeof (parsed as Record<string, unknown>).amount === "number" &&
+      typeof (parsed as Record<string, unknown>).price === "number"
+    ) {
+      return parsed as CounterTerms;
+    }
+    return null;
   } catch {
     return null;
   }

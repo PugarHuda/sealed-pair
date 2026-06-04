@@ -10,7 +10,7 @@ import { MakerTag, lblS, valS } from "@/components/app/shared";
 import { decryptText, loadKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, SUISCAN_HOST } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 import { CounterOfferModal, CounterOffersPanel } from "@/components/app/counter-offer";
 import BlobInspector from "@/components/app/blob-inspector";
 import OrderTimeline from "@/components/app/order-timeline";
@@ -295,11 +295,10 @@ export default function DealScreen({
     setPhase("funding");
 
     // ---- Pre-flight state check ----
-    // The Board can briefly show a stale cached card for an order that's
-    // since been locked or settled. Click → fund() → wallet popup →
-    // MoveAbort code 0 is a terrible UX. Read the live Order state via a
-    // single RPC BEFORE asking the wallet to sign. Skip when not on-chain
-    // (mock path) or on a non-on-chain orderObj.
+    // Read the live Order state BEFORE asking the wallet to sign so a
+    // stale board card surfaces a friendly error instead of a confusing
+    // post-signature MoveAbort. Only treat as stale when we actually
+    // observed a state number — RPC failures fall through to the real tx.
     if (onChainEnabled) {
       try {
         const res = await fetch("/api/sui", {
@@ -308,21 +307,24 @@ export default function DealScreen({
           body: JSON.stringify({
             method: "sui_getObject",
             params: [order.orderObj, { showContent: true }],
-            network: "devnet",
+            network: SUI_NETWORK_FOR_EVENTS,
           }),
         });
-        const json = (await res.json()) as {
-          result?: { data?: { content?: { fields?: { state?: unknown } } } };
-        };
-        const state = Number(json.result?.data?.content?.fields?.state ?? -1);
-        if (state !== 0) {
-          if (!mountedRef.current) return;
-          const label = state === 1 ? "LOCKED" : state === 2 ? "REVEALED" : state === 3 ? "SETTLED" : state === 4 ? "CANCELLED" : "unknown";
-          setFundError(
-            `Order is no longer OPEN on-chain (state=${label}). The board card is stale — refresh in a moment and pick a different sealed order.`,
-          );
-          setPhase("sealed");
-          return;
+        if (res.ok) {
+          const json = (await res.json()) as {
+            result?: { data?: { content?: { fields?: { state?: unknown } } } };
+          };
+          const rawState = json.result?.data?.content?.fields?.state;
+          const state = typeof rawState === "string" || typeof rawState === "number" ? Number(rawState) : NaN;
+          if (Number.isFinite(state) && state !== 0) {
+            if (!mountedRef.current) return;
+            const label = state === 1 ? "LOCKED" : state === 2 ? "REVEALED" : state === 3 ? "SETTLED" : state === 4 ? "CANCELLED" : "non-OPEN";
+            setFundError(
+              `Order is no longer OPEN on-chain (state=${label}). The board card is stale — refresh in a moment and pick a different sealed order.`,
+            );
+            setPhase("sealed");
+            return;
+          }
         }
       } catch {
         // RPC blip — proceed and let the real tx error guide the user.
@@ -479,7 +481,10 @@ export default function DealScreen({
       onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
     } catch (e) {
       const raw = e instanceof Error ? e.message : "Reap failed";
-      const hint = raw.includes("abort code: 3")
+      // Move package error constants (move/sources/order.move):
+      //   0 = EWrongState   3 = EExpired (used inside lock_with_escrow)
+      //   4 = ENotExpired   (asserted by cancel_expired when epoch < expiry)
+      const hint = raw.includes("abort code: 4")
         ? "Not expired yet — current epoch hasn't reached expiry_epoch on-chain."
         : raw.includes("abort code: 0")
         ? "Order is no longer in OPEN or LOCKED state."

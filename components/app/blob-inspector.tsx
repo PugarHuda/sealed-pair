@@ -28,11 +28,15 @@ export default function BlobInspector({
   const [latencyMs, setLatencyMs] = useState<number>(0);
 
   useEffect(() => {
+    const ac = new AbortController();
     let cancelled = false;
     const start = performance.now();
     (async () => {
       try {
-        const res = await fetch(`/api/walrus/blob/${encodeURIComponent(blobId)}`, { cache: "force-cache" });
+        const res = await fetch(`/api/walrus/blob/${encodeURIComponent(blobId)}`, {
+          cache: "force-cache",
+          signal: ac.signal,
+        });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (cancelled) return;
@@ -41,11 +45,12 @@ export default function BlobInspector({
         setLoading(false);
       } catch (e) {
         if (cancelled) return;
+        if (e instanceof Error && e.name === "AbortError") return;
         setError(e instanceof Error ? e.message : "fetch failed");
         setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; ac.abort(); };
   }, [blobId]);
 
   const totalBytes = bytes?.byteLength ?? 0;
