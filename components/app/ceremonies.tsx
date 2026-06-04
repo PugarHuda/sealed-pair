@@ -8,7 +8,7 @@ import Mascot from "@/components/mascot";
 import { encryptText, generateKey, stashKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, fetchCurrentEpoch, rememberSideHint, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 
 /* ---------------- step runner ---------------- */
 function useSteps(steps: { ms: number }[], active: boolean, onComplete?: () => void) {
@@ -234,6 +234,10 @@ export function SealCeremony({
         setPublisher(pub);
         // stash key keyed by REAL blobId so taker (same browser) can decrypt
         await stashKey(blobId, key);
+        // Remember the user's stated side so the RFQ board can render the
+        // correct tag once the polling cycle picks this order up. Chain
+        // doesn't store side — without this the heuristic owns it.
+        rememberSideHint(blobId, order.side as "SELL" | "BUY");
         await sleep(400);
         setDone(2);
 

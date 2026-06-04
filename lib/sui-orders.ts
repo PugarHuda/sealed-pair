@@ -73,6 +73,56 @@ export function requirePackageId(): string {
 export const MODULE = "order";
 export const target = (fn: string) => `${requirePackageId()}::${MODULE}::${fn}`;
 
+/* ============ side inference ============
+ * The Move package does NOT store a SELL/BUY label — it's redundant with
+ * give/get on-chain. We need the label for UI filtering, so:
+ *   1. For orders sealed in THIS browser we save the user's stated side
+ *      under the blobId key. Those wins exact intent recall on refresh.
+ *   2. For all other orders we infer from asset roles: giving away a
+ *      stablecoin to acquire something else == BUY; everything else == SELL.
+ */
+const STABLES: ReadonlySet<AssetSym> = new Set<AssetSym>(["USDC", "USDT"]);
+
+export function inferSide(give: AssetSym, get: AssetSym): "SELL" | "BUY" {
+  const giveStable = STABLES.has(give);
+  const getStable = STABLES.has(get);
+  if (giveStable && !getStable) return "BUY";
+  return "SELL";
+}
+
+const SIDE_HINT_KEY = "sealedpair:side-hints";
+type SideHints = Record<string, "SELL" | "BUY">;
+
+function readSideHints(): SideHints {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SIDE_HINT_KEY);
+    return raw ? (JSON.parse(raw) as SideHints) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Persist user's chosen side for a blob. Called after a successful seal so
+ *  the live RFQ board recovers it after a refresh / cross-device load.
+ *  Per-device only — cross-device hint persistence would require on-chain
+ *  storage or a backend, beyond hackathon scope. */
+export function rememberSideHint(blobId: string, side: "SELL" | "BUY"): void {
+  if (typeof window === "undefined" || !blobId) return;
+  try {
+    const cur = readSideHints();
+    cur[blobId] = side;
+    window.localStorage.setItem(SIDE_HINT_KEY, JSON.stringify(cur));
+  } catch {
+    /* quota — best-effort */
+  }
+}
+
+export function getSideHint(blobId: string): "SELL" | "BUY" | null {
+  if (!blobId) return null;
+  return readSideHints()[blobId] ?? null;
+}
+
 /* ============ on-chain event mirrors ============ */
 
 /** Mirrors `sealed_pair::order::OrderPosted`. */
@@ -264,9 +314,13 @@ function eventToOrder(evt: RpcEvent): Order | null {
   const makerHex = p.maker.startsWith("0x") ? p.maker.slice(2) : p.maker;
   const makerName = `Anon-${makerHex.slice(0, 4).toUpperCase()}`;
 
+  // Prefer the user's stated side if we sealed this blob locally; otherwise
+  // fall back to a stablecoin-heuristic so the BUY filter actually returns
+  // results for stablecoin → asset orders.
+  const side = getSideHint(blobId) ?? inferSide(give, get);
   const base = makeOrder({
     maker: { name: makerName, handle: shortAddr(p.maker), color: addrColor(p.maker) },
-    side: "SELL",
+    side,
     give,
     get,
     amount: Math.max(1_000, approxGiveAmount),
