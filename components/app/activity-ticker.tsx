@@ -92,8 +92,13 @@ export default function ActivityTicker() {
         }}
       >
         {items.map((item) => {
-          const tone = item.kind === "settled" ? "var(--good)" : "var(--accent)";
-          const labelKind = item.kind === "settled" ? "SETTLED" : "POSTED";
+          const tone =
+            item.kind === "settled" ? "var(--good)" :
+            item.kind === "cancelled" ? "var(--bad)" :
+            item.kind === "locked" ? "var(--seal-glow)" :
+            item.kind === "revealed" ? "var(--accent-2)" :
+            "var(--accent)";
+          const labelKind = item.kind.toUpperCase();
           return (
             <a
               key={`${item.txDigest}:${item.kind}`}

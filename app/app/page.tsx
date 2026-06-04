@@ -227,6 +227,9 @@ export default function AppPage() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [profileAddr, setProfileAddr] = useState<string | null>(null);
   const [initialPair, setInitialPair] = useState<string | undefined>(undefined);
+  // Timestamp of the last *successful* live-orders poll. Drives the
+  // freshness indicator next to the manual refresh button.
+  const [lastRefreshMs, setLastRefreshMs] = useState<number | null>(null);
   const account = useCurrentAccount();
   // Track pending toast auto-dismiss timers so we can cancel them on
   // unmount and avoid setState-on-unmounted warnings / phantom dismissals.
@@ -293,6 +296,7 @@ export default function AppPage() {
     try {
       const live = await listOpenOrders({ network: SUI_NETWORK_FOR_EVENTS, limit: 50 });
       setLiveCount(live.length);
+      setLastRefreshMs(Date.now());
       // Persist immediately so the next page-load hydrates from this snapshot.
       writeLiveCache(live);
       setOrders((prev) => {
@@ -445,6 +449,36 @@ export default function AppPage() {
       }
     }
   };
+
+  // Keyboard shortcuts:
+  //   /  → focus the Board search input (when not already in a field)
+  //   r  → trigger manual refresh (Board only, no modifier keys)
+  //   Esc → close the topmost open modal/ceremony
+  // Targets the most pressed/typed keys but stays out of the way when the
+  // user is actually typing into a field (Esc still works there).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName ?? "";
+      const isField = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.key === "Escape") {
+        if (sealDraft) { setSealDraft(null); return; }
+        if (settleOrder) { setSettleOrder(null); return; }
+        if (profileAddr) { setProfileAddr(null); return; }
+        if (watchlistOpen) { setWatchlistOpen(false); return; }
+        return;
+      }
+      if (isField) return;          // don't steal typing keys from fields
+      if (e.key === "/" && view === "board") {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('input[placeholder^="Search pair"]')?.focus();
+      } else if ((e.key === "r" || e.key === "R") && view === "board" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        void refreshLiveOrders();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sealDraft, settleOrder, profileAddr, watchlistOpen, view, refreshLiveOrders]);
 
   // Browser back/forward arrows: pop the most recent history entry, then
   // reconstruct app state from the URL. Without this listener, hitting
@@ -619,7 +653,7 @@ export default function AppPage() {
           transition: "opacity .12s ease-out",
         }}
       >
-        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} initialPair={initialPair} onRefresh={refreshLiveOrders} />}
+        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} initialPair={initialPair} onRefresh={refreshLiveOrders} lastRefreshMs={lastRefreshMs} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {hydrated && view === "vault" && <VaultScreen settled={settled} repMap={repMap} />}
         {hydrated && view === "deal" && active && (

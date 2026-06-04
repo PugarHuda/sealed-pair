@@ -872,23 +872,28 @@ export async function fetchOrderTimeline(
 
 /* ============ Recent activity (multi-event merged feed) ============ */
 
+export type ActivityKind = "posted" | "locked" | "revealed" | "settled" | "cancelled";
+
 export type ActivityItem = {
-  kind: "posted" | "settled";
+  kind: ActivityKind;
   orderId: string;
-  actor: string;          // maker for posted, settler/taker for settled
-  pair: string;           // e.g., "SUI/USDC"
+  actor: string;          // maker for posted, taker for locked, otherwise orderId
+  pair: string;           // e.g., "SUI/USDC" — only known for posted/locked
   txDigest: string;
   timestampMs: number;
 };
 
-/** Merge recent OrderPosted + OrderSettled into a single time-sorted feed.
- *  Two RPC calls in parallel. Falls back to [] gracefully on any failure. */
+/** Merge ALL 5 on-chain event types into one time-sorted feed for the live
+ *  ticker. Each event type queried in parallel via Promise.all so the
+ *  total latency is the slowest single call, not the sum. Pair data is
+ *  available on Posted (full event payload) and Locked (taker + amount);
+ *  other kinds carry just orderId so the ticker only shows IDs there. */
 export async function listRecentActivity(
   network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
   limit = 20,
 ): Promise<ActivityItem[]> {
   if (!SEALED_PAIR_PACKAGE_ID) return [];
-  const queryEvent = async (suffix: string, limit: number) => {
+  const queryEvent = async (suffix: string, n: number) => {
     try {
       const res = await fetch("/api/sui", {
         method: "POST",
@@ -897,9 +902,7 @@ export async function listRecentActivity(
           method: "suix_queryEvents",
           params: [
             { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::${suffix}` },
-            null,
-            limit,
-            true,
+            null, n, true,
           ],
           network,
         }),
@@ -911,9 +914,12 @@ export async function listRecentActivity(
       return [];
     }
   };
-  const [posted, settled] = await Promise.all([
+  const [posted, locked, revealed, settled, cancelled] = await Promise.all([
     queryEvent("OrderPosted", limit),
+    queryEvent("OrderLocked", limit),
+    queryEvent("OrderRevealed", limit),
     queryEvent("OrderSettled", limit),
+    queryEvent("OrderCancelled", limit),
   ]);
   const items: ActivityItem[] = [];
   for (const evt of posted) {
@@ -928,14 +934,50 @@ export async function listRecentActivity(
       timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
     });
   }
+  for (const evt of locked) {
+    const p = evt.parsedJson as { order_id?: string; taker?: string };
+    if (!p.order_id) continue;
+    items.push({
+      kind: "locked",
+      orderId: p.order_id,
+      actor: p.taker ?? p.order_id,
+      pair: "",
+      txDigest: evt.id.txDigest,
+      timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+    });
+  }
+  for (const evt of revealed) {
+    const p = evt.parsedJson as { order_id?: string };
+    if (!p.order_id) continue;
+    items.push({
+      kind: "revealed",
+      orderId: p.order_id,
+      actor: p.order_id,
+      pair: "",
+      txDigest: evt.id.txDigest,
+      timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+    });
+  }
   for (const evt of settled) {
     const p = evt.parsedJson as { order_id?: string };
     if (!p.order_id) continue;
     items.push({
       kind: "settled",
       orderId: p.order_id,
-      actor: p.order_id,                 // OrderSettled doesn't include settler addr
-      pair: "",                          // unknown without a second hop; ticker degrades gracefully
+      actor: p.order_id,
+      pair: "",
+      txDigest: evt.id.txDigest,
+      timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+    });
+  }
+  for (const evt of cancelled) {
+    const p = evt.parsedJson as { order_id?: string };
+    if (!p.order_id) continue;
+    items.push({
+      kind: "cancelled",
+      orderId: p.order_id,
+      actor: p.order_id,
+      pair: "",
       txDigest: evt.id.txDigest,
       timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
     });

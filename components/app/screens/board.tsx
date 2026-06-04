@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PERSONAS, short } from "@/lib/data";
 import type { Order } from "@/lib/types";
 import type { MakerStats } from "@/lib/sui-orders";
@@ -11,7 +11,7 @@ import ActivityTicker from "@/components/app/activity-ticker";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export default function BoardScreen({
-  orders, role, onOpen, repMap, onMakerProfile, initialPair, onRefresh,
+  orders, role, onOpen, repMap, onMakerProfile, initialPair, onRefresh, lastRefreshMs,
 }: {
   orders: Order[];
   role: "marina" | "theo";
@@ -24,6 +24,8 @@ export default function BoardScreen({
   /** Force-poll all live data on demand. Useful for demo + when the user
    *  expects fresh state right after a settle/cancel that wasn't theirs. */
   onRefresh?: () => Promise<void> | void;
+  /** Timestamp (epoch ms) of the last successful live-orders poll. */
+  lastRefreshMs?: number | null;
 }) {
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = async () => {
@@ -111,6 +113,7 @@ export default function BoardScreen({
               onChange={setSide}
               options={[{ value: "ALL", label: "All" }, { value: "SELL", label: "Sell" }, { value: "BUY", label: "Buy" }]}
             />
+            {lastRefreshMs && <FreshnessChip lastMs={lastRefreshMs} />}
             {onRefresh && (
               <button
                 type="button"
@@ -324,5 +327,42 @@ function MatchingPanel({ orders, walletShort, onSelectPair }: { orders: Order[];
         })}
       </div>
     </div>
+  );
+}
+
+/* FreshnessChip — small live timestamp next to the Refresh button so the
+ * user can tell at a glance whether the board is fresh. Ticks every 10s,
+ * shifts to warn at >60s, bad at >5min.                                */
+function FreshnessChip({ lastMs }: { lastMs: number }) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(t);
+  }, []);
+  const age = Math.max(0, now - lastMs);
+  const ageS = Math.floor(age / 1000);
+  const tone =
+    age > 300_000 ? "var(--bad)" :
+    age > 60_000 ? "var(--warn)" :
+    "var(--good)";
+  const label =
+    ageS < 5 ? "just now" :
+    ageS < 60 ? `${ageS}s ago` :
+    ageS < 3600 ? `${Math.floor(ageS / 60)}m ago` :
+    `${Math.floor(ageS / 3600)}h ago`;
+  return (
+    <span
+      title={`Last successful poll at ${new Date(lastMs).toLocaleTimeString()}`}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 6,
+        fontSize: 11.5, color: tone, fontWeight: 600,
+        fontVariantNumeric: "tabular-nums",
+        padding: "0 4px",
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone, boxShadow: `0 0 6px ${tone}` }} />
+      {label}
+    </span>
   );
 }
