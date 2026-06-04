@@ -16,6 +16,7 @@ import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import MakerProfileModal from "@/components/app/maker-profile";
 import NetworkMismatchBanner from "@/components/app/network-mismatch";
 import OnboardingHint from "@/components/app/onboarding-hint";
+import PoweredBy from "@/components/app/powered-by";
 import NetworkPill from "@/components/app/network-pill";
 import { listOpenOrders, packageStatus, SUI_NETWORK_FOR_EVENTS, fetchMakerReputation, MakerStats } from "@/lib/sui-orders";
 import ConnectButton from "@/components/wallet/connect-button";
@@ -673,6 +674,7 @@ export default function AppPage() {
         {!hydrated && <BoardSkeleton />}
       </main>
 
+      {hydrated && <PoweredBy />}
       {sealDraft && <SealCeremony order={sealDraft} onDone={finishSeal} onClose={() => setSealDraft(null)} />}
       {settleOrder && <SettleCeremony order={settleOrder} onDone={finishSettle} onClose={() => setSettleOrder(null)} />}
       {watchlistOpen && <WatchlistDrawer onClose={() => setWatchlistOpen(false)} />}

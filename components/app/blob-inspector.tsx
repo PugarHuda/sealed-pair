@@ -26,6 +26,9 @@ export default function BlobInspector({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [latencyMs, setLatencyMs] = useState<number>(0);
+  const [headers, setHeaders] = useState<{ contentType: string | null; servedBy: string | null }>({
+    contentType: null, servedBy: null,
+  });
 
   useEffect(() => {
     const ac = new AbortController();
@@ -42,6 +45,10 @@ export default function BlobInspector({
         if (cancelled) return;
         setBytes(new Uint8Array(buf));
         setLatencyMs(Math.round(performance.now() - start));
+        setHeaders({
+          contentType: res.headers.get("content-type"),
+          servedBy: res.headers.get("x-walrus-aggregator") ?? res.headers.get("server"),
+        });
         setLoading(false);
       } catch (e) {
         if (cancelled) return;
@@ -117,6 +124,26 @@ export default function BlobInspector({
                   <Stat label="Fetch time" value={`${latencyMs} ms`} tone="var(--accent-2)" />
                   <Stat label="Status" value="Retrievable" tone="var(--good)" />
                 </div>
+                {(headers.contentType || headers.servedBy) && (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      background: "var(--deep)",
+                      border: "1px solid var(--border-soft)",
+                      borderRadius: "var(--r-sm)",
+                      display: "grid", gap: 6,
+                      fontSize: 11.5,
+                      fontFamily: "var(--font-mono)",
+                      color: "var(--text-dim)",
+                    }}
+                  >
+                    {headers.contentType && <div>content-type: {headers.contentType}</div>}
+                    {headers.servedBy && <div>served-by: {headers.servedBy}</div>}
+                    <div style={{ color: "var(--text-faint)" }}>
+                      Walrus testnet · multi-aggregator failover (lib/walrus.ts)
+                    </div>
+                  </div>
+                )}
                 <div>
                   <div style={{ fontSize: 11, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700, marginBottom: 8 }}>
                     First 32 bytes (hex)

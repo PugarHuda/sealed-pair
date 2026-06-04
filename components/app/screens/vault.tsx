@@ -22,6 +22,7 @@ import { Segmented } from "@/components/ui/primitives";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import ObjectExplorer from "@/components/app/object-explorer";
 import DigestVerifier from "@/components/app/digest-verifier";
+import IntegrationHealth from "@/components/app/integration-health";
 
 function StatCard({ label, value, sub, icon, tone }: { label: string; value: string; sub?: string; icon: IconName; tone?: string }) {
   return (
@@ -130,6 +131,9 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
       {/* Real Move module introspection — RPC fetch of the deployed package's
           normalised module structure. Proves the contract is really on-chain. */}
       <DeployedContractPanel />
+      {/* Live integration health — pings Tatum RPC + every Walrus publisher
+          and aggregator we use. Measures real latency every 30s. */}
+      <IntegrationHealth />
       {/* Settle digest verifier — anti-spoof tool. */}
       <DigestVerifier />
       {/* Standalone Sui object explorer: paste any 0x... id, fetch live. */}
