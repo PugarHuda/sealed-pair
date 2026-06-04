@@ -184,6 +184,41 @@ function PortfolioMenu({
             {!loading && balances.length === 0 && (
               <div style={{ fontSize: 12, color: "var(--text-faint)" }}>No coins held on this network.</div>
             )}
+            {!loading && balances.length > 0 && (() => {
+              // If SUI balance < 1 SUI on devnet/testnet, surface a faucet
+              // link so users on the demo can self-serve. Mainnet has no
+              // faucet — hide the prompt there.
+              const sui = balances.find((b) => b.symbol === "SUI");
+              const suiMist = sui ? BigInt(sui.totalBalance || "0") : 0n;
+              const lowOnSui = suiMist < 1_000_000_000n; // < 1 SUI
+              const faucetHost =
+                SUI_NETWORK_FOR_EVENTS === "mainnet" ? null :
+                SUI_NETWORK_FOR_EVENTS === "testnet" ? "https://faucet.sui.io/?network=testnet" :
+                "https://faucet.sui.io/?network=devnet";
+              if (!lowOnSui || !faucetHost) return null;
+              return (
+                <a
+                  href={faucetHost}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", justifyContent: "space-between",
+                    gap: 8,
+                    marginBottom: 4,
+                    padding: "8px 12px",
+                    background: "color-mix(in oklab, var(--warn) 14%, transparent)",
+                    border: "1px solid var(--warn)",
+                    borderRadius: "var(--r-sm)",
+                    color: "var(--warn)",
+                    textDecoration: "none",
+                    fontSize: 12, fontWeight: 700,
+                  }}
+                >
+                  <span>Low SUI — top up via faucet</span>
+                  <Icon name="ext" size={11} sw={2.4} />
+                </a>
+              );
+            })()}
             {!loading && balances.map((b) => (
               <div
                 key={b.coinType}

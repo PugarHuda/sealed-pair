@@ -618,7 +618,7 @@ export default function AppPage() {
           transition: "opacity .12s ease-out",
         }}
       >
-        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} initialPair={initialPair} />}
+        {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} initialPair={initialPair} onRefresh={refreshLiveOrders} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {hydrated && view === "vault" && <VaultScreen settled={settled} repMap={repMap} />}
         {hydrated && view === "deal" && active && (

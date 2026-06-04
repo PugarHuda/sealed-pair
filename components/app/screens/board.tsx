@@ -11,7 +11,7 @@ import ActivityTicker from "@/components/app/activity-ticker";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export default function BoardScreen({
-  orders, role, onOpen, repMap, onMakerProfile, initialPair,
+  orders, role, onOpen, repMap, onMakerProfile, initialPair, onRefresh,
 }: {
   orders: Order[];
   role: "marina" | "theo";
@@ -21,7 +21,18 @@ export default function BoardScreen({
   /** Pre-applied pair filter from `/app?pair=SUI-USDC` deep-link. The Board
    *  shows only orders matching this pair until the user clears the chip. */
   initialPair?: string;
+  /** Force-poll all live data on demand. Useful for demo + when the user
+   *  expects fresh state right after a settle/cancel that wasn't theirs. */
+  onRefresh?: () => Promise<void> | void;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    if (!onRefresh) return;
+    setRefreshing(true);
+    try { await onRefresh(); } finally {
+      setTimeout(() => setRefreshing(false), 500);
+    }
+  };
   const [side, setSide] = useState("ALL");
   const [q, setQ] = useState("");
   const [scope, setScope] = useState<"ALL" | "MINE">("ALL");
@@ -53,7 +64,13 @@ export default function BoardScreen({
     }
     if (q) {
       const mn = typeof o.maker === "string" ? PERSONAS[o.maker].name : o.maker.name;
-      const hay = (o.give + o.get + o.code + mn).toLowerCase();
+      const handle = typeof o.maker === "string" ? "" : o.maker.handle;
+      const addr = typeof o.maker === "string" ? "" : (o.maker as { addr?: string }).addr ?? "";
+      // Match on pair / human name / code / handle / full address /
+      // orderObj / blobId substrings so users can paste any reference.
+      const hay = (
+        o.give + o.get + o.code + mn + handle + addr + o.orderObj + o.blobId
+      ).toLowerCase();
       if (!hay.includes(q.toLowerCase())) return false;
     }
     return true;
@@ -85,8 +102,8 @@ export default function BoardScreen({
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search pair…"
-                style={{ ...inputStyle, padding: "11px 14px 11px 38px", width: 180, fontSize: 14 }}
+                placeholder="Search pair / addr / blobId…"
+                style={{ ...inputStyle, padding: "11px 14px 11px 38px", width: 220, fontSize: 14 }}
               />
             </div>
             <Segmented
@@ -94,6 +111,37 @@ export default function BoardScreen({
               onChange={setSide}
               options={[{ value: "ALL", label: "All" }, { value: "SELL", label: "Sell" }, { value: "BUY", label: "Buy" }]}
             />
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={handleRefresh}
+                title="Force-refresh live data"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  background: "var(--deep)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 99,
+                  color: refreshing ? "var(--accent)" : "var(--text-dim)",
+                  padding: "8px 13px",
+                  fontSize: 12.5, fontWeight: 700,
+                  cursor: refreshing ? "default" : "pointer",
+                  opacity: refreshing ? 0.7 : 1,
+                  transition: "opacity .15s",
+                }}
+                disabled={refreshing}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    transition: "transform .4s",
+                    transform: refreshing ? "rotate(360deg)" : "none",
+                  }}
+                >
+                  <Icon name="bolt" size={13} sw={2.4} />
+                </span>
+                {refreshing ? "Refreshing…" : "Refresh"}
+              </button>
+            )}
             {/* My-only filter — render only when the user actually has at
                 least one mine order, so wallets that haven't posted don't
                 see a dead toggle that always shows the empty state. */}
