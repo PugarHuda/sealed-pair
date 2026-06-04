@@ -413,6 +413,38 @@ function humanExpiry(epoch: string | undefined): string {
   return `epoch ${e}`;
 }
 
+/**
+ * Move Option<address> can serialize as several shapes depending on the
+ * Sui RPC version + showContent option. Cover all four observed forms:
+ *   - `null` / `undefined`           → None
+ *   - `"0x..."` (direct string)      → Some (simplified)
+ *   - `{ vec: ["0x..."] }`           → Some (canonical)
+ *   - `{ fields: { vec: [...] } }`   → Some (nested object form)
+ *   - `{ Some: "0x..." }`            → Some (alternative variant tag)
+ * Returns the address string when present, null otherwise.
+ */
+function extractOptionAddress(raw: unknown): string | null {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw.startsWith("0x") ? raw : null;
+  if (typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  // { vec: ["0x..."] } or { vec: [] }
+  if (Array.isArray(obj.vec)) {
+    const v = obj.vec[0];
+    return typeof v === "string" && v.startsWith("0x") ? v : null;
+  }
+  // { fields: { vec: [...] } }
+  if (obj.fields && typeof obj.fields === "object") {
+    const inner = obj.fields as Record<string, unknown>;
+    if (Array.isArray(inner.vec) && typeof inner.vec[0] === "string") {
+      return (inner.vec[0] as string).startsWith("0x") ? (inner.vec[0] as string) : null;
+    }
+  }
+  // { Some: "0x..." }
+  if (typeof obj.Some === "string" && obj.Some.startsWith("0x")) return obj.Some;
+  return null;
+}
+
 function decodeBytesField(raw: unknown): string {
   if (Array.isArray(raw)) return new TextDecoder().decode(new Uint8Array(raw));
   if (typeof raw === "string") return raw;
@@ -556,11 +588,7 @@ export async function enrichSettledEvents(
             : Math.floor(escrowMistNum / 1e6 / 0.02)
           : 0;
         const escrowDisplayLabel = `${approxGiveAmount.toLocaleString("en-US")} ${give}`;
-        const takerField = (fields.taker as { fields?: { vec?: string[] } } | string | undefined);
-        const taker =
-          typeof takerField === "object" && takerField?.fields?.vec?.[0]
-            ? takerField.fields.vec[0]
-            : null;
+        const taker = extractOptionAddress(fields.taker);
         return {
           orderId: evt.orderId,
           txDigest: evt.txDigest,

@@ -124,7 +124,17 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
         <StatCard label="Settled volume"   value={"$" + (totalVol / 1e6).toFixed(2) + "M"} sub="all-time, on-chain"      icon="wave" />
         <StatCard label="Trades settled"   value={String(settledCount)}                    sub={liveTrades.length > 0 ? `${liveTrades.length} live · ${settledCount - liveTrades.length} demo` : "atomic, zero failed legs"} icon="check" tone="var(--good)" />
         <StatCard label="Avg settle time"  value={VOLUME_STATS.avgSettle}                  sub="quote → finality"        icon="bolt" tone="var(--accent-2)" />
-        <StatCard label="Sealed right now" value={String(VOLUME_STATS.sealed)}             sub="live on the board"       icon="lock" tone="var(--seal-glow)" />
+        {walletAddr && mineCount > 0 ? (
+          <StatCard
+            label="Your trades"
+            value={String(mineCount)}
+            sub={short(walletAddr, 6, 4)}
+            icon="user"
+            tone="var(--accent)"
+          />
+        ) : (
+          <StatCard label="Sealed right now" value={String(VOLUME_STATS.sealed)} sub="live on the board" icon="lock" tone="var(--seal-glow)" />
+        )}
       </div>
       {/* Maker leaderboard — sorted by settle count, top 5 only. Renders
           nothing when repMap is empty / not yet loaded. */}
@@ -165,8 +175,8 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {liveTradesToShow.map((t) => <UnifiedRow key={t.orderId} trade={t} live />)}
-        {settledToShow.map((o) => <UnifiedRow key={o.id} trade={fromOrder(o)} />)}
+        {liveTradesToShow.map((t) => <UnifiedRow key={t.orderId} trade={t} live walletAddr={walletAddr} />)}
+        {settledToShow.map((o) => <UnifiedRow key={o.id} trade={fromOrder(o)} walletAddr={walletAddr} />)}
         {settledToShow.length === 0 && liveTradesToShow.length === 0 && (
           <div style={{ color: "var(--text-faint)", padding: "30px 0", textAlign: "center" }}>
             {scope === "MINE" ? "You haven't settled any trades yet on this wallet." : "No settlements yet."}
@@ -195,10 +205,19 @@ function fromOrder(o: Order): SettledTrade & { code?: string; when: string } {
   };
 }
 
-function UnifiedRow({ trade, live }: { trade: SettledTrade & { code?: string }; live?: boolean }) {
+function UnifiedRow({ trade, live, walletAddr }: { trade: SettledTrade & { code?: string }; live?: boolean; walletAddr?: string | null }) {
   const [open, setOpen] = useState(false);
   const [receiptCopied, setReceiptCopied] = useState(false);
   const partyShort = trade.taker ? short(trade.taker, 6, 4) : "—";
+  // Surface a "Your role" badge when the connected wallet matches either
+  // side — makes it obvious which historical trades the user was part of.
+  const myRole: "maker" | "taker" | null = (() => {
+    if (!walletAddr) return null;
+    const w = walletAddr.toLowerCase();
+    if (trade.maker && trade.maker.toLowerCase() === w) return "maker";
+    if (trade.taker && trade.taker.toLowerCase() === w) return "taker";
+    return null;
+  })();
   const copyReceipt = () => {
     if (typeof window === "undefined") return;
     const receipt = {
@@ -249,6 +268,23 @@ function UnifiedRow({ trade, live }: { trade: SettledTrade & { code?: string }; 
                   }}
                 >
                   LIVE
+                </span>
+              )}
+              {myRole && (
+                <span
+                  title={`You were the ${myRole} on this trade`}
+                  style={{
+                    color: "var(--accent-ink)",
+                    background: "var(--accent)",
+                    fontSize: 10.5,
+                    fontWeight: 800,
+                    letterSpacing: ".08em",
+                    textTransform: "uppercase",
+                    padding: "2px 7px",
+                    borderRadius: 99,
+                  }}
+                >
+                  You · {myRole}
                 </span>
               )}
             </div>
