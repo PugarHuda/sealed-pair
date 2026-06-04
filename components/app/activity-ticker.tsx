@@ -4,7 +4,7 @@
 // timestamp). Renders nothing when there's no activity yet.
 
 import { useEffect, useState } from "react";
-import { ActivityItem, listRecentActivity, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
+import { ActivityItem, listRecentActivity, packageStatus, SUI_NETWORK_FOR_EVENTS, SUISCAN_HOST } from "@/lib/sui-orders";
 import { short } from "@/lib/data";
 import Icon from "@/components/ui/icon";
 
@@ -42,6 +42,11 @@ export default function ActivityTicker() {
 
   // Void-reference now so the timeAgo strings re-render every clock tick.
   void now;
+  // When the Move package isn't deployed, don't render the empty-state
+  // shell at all — there will never be events to populate it and the
+  // "Waiting for the next on-chain event…" copy reads as a broken widget.
+  // DeployedContractPanel uses the same gate.
+  if (items.length === 0 && !packageStatus().configured) return null;
   if (items.length === 0) {
     return (
       <div

@@ -214,8 +214,14 @@ function UnifiedRow({ trade, live, walletAddr }: { trade: SettledTrade & { code?
   const myRole: "maker" | "taker" | null = (() => {
     if (!walletAddr) return null;
     const w = walletAddr.toLowerCase();
+    // Match on the full address first (live SettledTrade rows).
     if (trade.maker && trade.maker.toLowerCase() === w) return "maker";
     if (trade.taker && trade.taker.toLowerCase() === w) return "taker";
+    // Fallback for demo Order rows where fromOrder() stuffed maker.handle
+    // (short "0xcb63…f317" form) into trade.maker. Without this branch
+    // demo rows never light up the role badge even when they should.
+    const ws = short(walletAddr, 6, 4);
+    if (trade.maker && trade.maker === ws) return "maker";
     return null;
   })();
   const copyReceipt = () => {
