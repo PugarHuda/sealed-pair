@@ -14,6 +14,8 @@ import DealScreen from "@/components/app/screens/deal";
 import VaultScreen from "@/components/app/screens/vault";
 import { SealCeremony, SettleCeremony } from "@/components/app/ceremonies";
 import MakerProfileModal from "@/components/app/maker-profile";
+import MakerInbox from "@/components/app/maker-inbox";
+import { fetchMakerInbox } from "@/lib/sui-orders";
 import NetworkMismatchBanner from "@/components/app/network-mismatch";
 import OnboardingHint from "@/components/app/onboarding-hint";
 import PoweredBy from "@/components/app/powered-by";
@@ -229,6 +231,8 @@ export default function AppPage() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [profileAddr, setProfileAddr] = useState<string | null>(null);
   const [initialPair, setInitialPair] = useState<string | undefined>(undefined);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [inboxCount, setInboxCount] = useState(0);
   // Timestamp of the last *successful* live-orders poll. Drives the
   // freshness indicator next to the manual refresh button.
   const [lastRefreshMs, setLastRefreshMs] = useState<number | null>(null);
@@ -378,6 +382,26 @@ export default function AppPage() {
     const t = setInterval(refreshLiveOrders, 30_000);
     return () => clearInterval(t);
   }, [refreshLiveOrders]);
+
+  // Maker inbox count poll — surfaces "you have N incoming items" in the
+  // header without needing to open the inbox modal. Re-fires every 30s
+  // alongside other polls; bailout if no wallet connected.
+  useEffect(() => {
+    if (!packageStatus().configured || !account?.address) {
+      setInboxCount(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const r = await fetchMakerInbox(account.address, SUI_NETWORK_FOR_EVENTS);
+        if (!cancelled) setInboxCount(r.lockedCount + r.counterCount);
+      } catch { /* silent */ }
+    };
+    tick();
+    const t = setInterval(tick, 30_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [account?.address]);
 
   // Maker reputation poll — refreshes alongside the board. Independent of
   // orders polling so a hiccup in one doesn't kill the other.
@@ -651,6 +675,41 @@ export default function AppPage() {
           </nav>
           <div className="app-header-trail">
             <NetworkPill />
+            {account && (
+              <button
+                type="button"
+                onClick={() => setInboxOpen(true)}
+                aria-label="Inbox — incoming activity on your orders"
+                title={inboxCount > 0 ? `${inboxCount} new incoming activity` : "Inbox (no activity yet)"}
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                  alignItems: "center", justifyContent: "center",
+                  width: 36, height: 36,
+                  background: inboxCount > 0 ? "color-mix(in oklab, var(--accent) 16%, var(--deep))" : "var(--deep)",
+                  border: `1px solid ${inboxCount > 0 ? "var(--accent)" : "var(--border)"}`,
+                  borderRadius: 99,
+                  cursor: "pointer",
+                  color: inboxCount > 0 ? "var(--accent)" : "var(--text-dim)",
+                }}
+              >
+                <Icon name="doc" size={15} sw={2.4} />
+                {inboxCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute", top: -3, right: -3,
+                      background: "var(--accent)", color: "var(--accent-ink)",
+                      fontSize: 10, fontWeight: 800,
+                      minWidth: 17, height: 17, padding: "0 5px",
+                      borderRadius: 99,
+                      display: "grid", placeItems: "center",
+                    }}
+                  >
+                    {inboxCount}
+                  </span>
+                )}
+              </button>
+            )}
             <WatchlistButton onOpen={() => setWatchlistOpen(true)} />
             <ConnectButton />
             {/* Persona toggle is a pre-wallet demo artifact. Once a real
@@ -704,6 +763,17 @@ export default function AppPage() {
       {settleOrder && <SettleCeremony order={settleOrder} onDone={finishSettle} onClose={() => setSettleOrder(null)} />}
       {watchlistOpen && <WatchlistDrawer onClose={() => setWatchlistOpen(false)} />}
       {profileAddr && <MakerProfileModal address={profileAddr} onClose={() => setProfileAddr(null)} />}
+      {inboxOpen && account?.address && (
+        <MakerInbox
+          walletAddr={account.address}
+          onClose={() => setInboxOpen(false)}
+          onOpenOrder={(orderId) => {
+            const o = orders.find((x) => x.orderObj === orderId);
+            if (o) openDeal(o);
+            else setPendingDeepLink(orderId.toLowerCase());
+          }}
+        />
+      )}
       <ToastStack toasts={toasts} onDismiss={(id) => setToasts((cur) => cur.filter((t) => t.id !== id))} />
     </div>
   );

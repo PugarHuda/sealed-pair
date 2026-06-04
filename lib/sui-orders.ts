@@ -753,6 +753,132 @@ export async function fetchMakerProfile(
   };
 }
 
+/* ============ Maker inbox — incoming activity on my orders ============ */
+
+export type InboxItem = {
+  kind: "locked" | "counter";
+  orderId: string;
+  blobId: string;
+  pair: string;
+  actor: string | null;     // taker for locked items, proposer for counters
+  timestampMs: number;      // best-known timestamp
+  txDigest: string | null;  // null for counter-offers (off-chain)
+};
+
+/** Aggregate maker-side incoming activity: who locked my orders + who
+ *  sent counter-offers. Reads OrderPosted (filter by maker) → OrderLocked
+ *  (filter by my orderIds) → localStorage counters per orderId. */
+export async function fetchMakerInbox(
+  makerAddr: string,
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+): Promise<{ items: InboxItem[]; lockedCount: number; counterCount: number; orderCount: number }> {
+  if (!SEALED_PAIR_PACKAGE_ID || !makerAddr) {
+    return { items: [], lockedCount: 0, counterCount: 0, orderCount: 0 };
+  }
+  const target = makerAddr.toLowerCase();
+
+  // 1. All OrderPosted events filtered by maker → my orderIds + blob/pair lookup.
+  const postedRes = await fetch("/api/sui", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      method: "suix_queryEvents",
+      params: [
+        { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::OrderPosted` },
+        null, 100, true,
+      ],
+      network,
+    }),
+  });
+  if (!postedRes.ok) {
+    return { items: [], lockedCount: 0, counterCount: 0, orderCount: 0 };
+  }
+  const postedJson = (await postedRes.json()) as { result?: QueryEventsResp };
+  const myPosted = (postedJson.result?.data ?? []).filter((evt) => {
+    const p = evt.parsedJson as Partial<OrderPostedEvent>;
+    return p.maker?.toLowerCase() === target;
+  });
+  const myOrders = new Map<string, { blobId: string; pair: string }>();
+  for (const evt of myPosted) {
+    const p = evt.parsedJson as Partial<OrderPostedEvent>;
+    if (!p.order_id) continue;
+    myOrders.set(p.order_id, {
+      blobId: decodeBytesField(p.blob_id),
+      pair: `${p.give_kind ?? "?"}/${p.get_kind ?? "?"}`,
+    });
+  }
+  const myOrderIds = new Set(myOrders.keys());
+
+  // 2. OrderLocked events touching my orderIds.
+  const lockedRes = await fetch("/api/sui", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      method: "suix_queryEvents",
+      params: [
+        { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::OrderLocked` },
+        null, 100, true,
+      ],
+      network,
+    }),
+  });
+  const items: InboxItem[] = [];
+  if (lockedRes.ok) {
+    const lockedJson = (await lockedRes.json()) as { result?: QueryEventsResp };
+    for (const evt of lockedJson.result?.data ?? []) {
+      const p = evt.parsedJson as { order_id?: string; taker?: string };
+      if (!p.order_id || !myOrderIds.has(p.order_id)) continue;
+      const meta = myOrders.get(p.order_id)!;
+      items.push({
+        kind: "locked",
+        orderId: p.order_id,
+        blobId: meta.blobId,
+        pair: meta.pair,
+        actor: p.taker ?? null,
+        timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+        txDigest: evt.id.txDigest,
+      });
+    }
+  }
+
+  // 3. Counter-offers from localStorage, one per orderId.
+  let counterCount = 0;
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem("sealedpair:counters:index");
+      const idx = raw ? (JSON.parse(raw) as string[]) : [];
+      for (const oid of idx) {
+        if (!myOrderIds.has(oid)) continue;
+        const cRaw = window.localStorage.getItem(`sealedpair:counters:${oid}`);
+        if (!cRaw) continue;
+        const list = JSON.parse(cRaw) as Array<{ proposedBy: string; createdAt: number; status: string }>;
+        for (const c of list) {
+          if (c.status !== "pending") continue;
+          counterCount += 1;
+          const meta = myOrders.get(oid)!;
+          items.push({
+            kind: "counter",
+            orderId: oid,
+            blobId: meta.blobId,
+            pair: meta.pair,
+            actor: c.proposedBy,
+            timestampMs: c.createdAt,
+            txDigest: null,
+          });
+        }
+      }
+    } catch { /* localStorage may be unavailable */ }
+  }
+
+  items.sort((a, b) => b.timestampMs - a.timestampMs);
+  return {
+    items,
+    lockedCount: items.filter((i) => i.kind === "locked").length,
+    counterCount,
+    orderCount: myOrders.size,
+  };
+}
+
 /* ============ Wallet portfolio ============ */
 
 export type CoinBalance = {
