@@ -281,6 +281,40 @@ export default function DealScreen({
     setDecryptFailed(false);
     setPhase("funding");
 
+    // ---- Pre-flight state check ----
+    // The Board can briefly show a stale cached card for an order that's
+    // since been locked or settled. Click → fund() → wallet popup →
+    // MoveAbort code 0 is a terrible UX. Read the live Order state via a
+    // single RPC BEFORE asking the wallet to sign. Skip when not on-chain
+    // (mock path) or on a non-on-chain orderObj.
+    if (onChainEnabled) {
+      try {
+        const res = await fetch("/api/sui", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: "sui_getObject",
+            params: [order.orderObj, { showContent: true }],
+            network: "devnet",
+          }),
+        });
+        const json = (await res.json()) as {
+          result?: { data?: { content?: { fields?: { state?: unknown } } } };
+        };
+        const state = Number(json.result?.data?.content?.fields?.state ?? -1);
+        if (state !== 0) {
+          const label = state === 1 ? "LOCKED" : state === 2 ? "REVEALED" : state === 3 ? "SETTLED" : state === 4 ? "CANCELLED" : "unknown";
+          setFundError(
+            `Order is no longer OPEN on-chain (state=${label}). The board card is stale — refresh in a moment and pick a different sealed order.`,
+          );
+          setPhase("sealed");
+          return;
+        }
+      } catch {
+        // RPC blip — proceed and let the real tx error guide the user.
+      }
+    }
+
     // ---- Atomic lock + mark_revealed in ONE PTB ----
     // Why combined: doing them as two separate signAndExecute calls hits a
     // race where Slush's dry-run for mark_revealed runs against a fullnode

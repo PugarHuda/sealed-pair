@@ -7,6 +7,7 @@ import { Segmented, inputStyle } from "@/components/ui/primitives";
 import Icon from "@/components/ui/icon";
 import { PageHead } from "@/components/app/shared";
 import OrderCard from "@/components/app/order-card";
+import ActivityTicker from "@/components/app/activity-ticker";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 
 export default function BoardScreen({
@@ -85,22 +86,25 @@ export default function BoardScreen({
               onChange={setSide}
               options={[{ value: "ALL", label: "All" }, { value: "SELL", label: "Sell" }, { value: "BUY", label: "Buy" }]}
             />
-            {/* My-only filter — visible whenever there's at least one wallet-owned
-                or persona-owned active order. Hidden otherwise to keep the
-                header tight for visitors who haven't sealed anything yet. */}
-            {(mineCount > 0 || walletShort) && (
+            {/* My-only filter — render only when the user actually has at
+                least one mine order, so wallets that haven't posted don't
+                see a dead toggle that always shows the empty state. */}
+            {mineCount > 0 && (
               <Segmented
                 value={scope}
                 onChange={(v) => setScope(v as "ALL" | "MINE")}
                 options={[
                   { value: "ALL", label: "Everyone" },
-                  { value: "MINE", label: mineCount > 0 ? `Mine · ${mineCount}` : "Mine" },
+                  { value: "MINE", label: `Mine · ${mineCount}` },
                 ]}
               />
             )}
           </div>
         }
       />
+      {/* Live activity ticker — merges OrderPosted + OrderSettled events,
+          sorted by timestamp. Real on-chain data via suix_queryEvents. */}
+      <ActivityTicker />
       {/* Matching opportunities: aggregate the currently-displayed orders
           (post-filters) into per-pair depth so makers see which pairs
           actually have counterparties active. Real on-chain data — no mock. */}

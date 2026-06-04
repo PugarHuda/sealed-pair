@@ -179,7 +179,32 @@ function fromOrder(o: Order): SettledTrade & { code?: string; when: string } {
 
 function UnifiedRow({ trade, live }: { trade: SettledTrade & { code?: string }; live?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [receiptCopied, setReceiptCopied] = useState(false);
   const partyShort = trade.taker ? short(trade.taker, 6, 4) : "—";
+  const copyReceipt = () => {
+    if (typeof window === "undefined") return;
+    const receipt = {
+      platform: "Sealed Pair",
+      network: SUI_NETWORK_FOR_EVENTS,
+      orderId: trade.orderId,
+      blobId: trade.blobId,
+      settleDigest: trade.txDigest || null,
+      settledAtEpoch: trade.settledAtEpoch || null,
+      maker: trade.maker || null,
+      taker: trade.taker || null,
+      pair: { give: trade.give, get: trade.get },
+      escrow: trade.escrowDisplayLabel,
+      escrowRequiredMist: trade.escrowRequiredMist,
+      suiScanUrl: trade.txDigest ? `${SUISCAN_HOST}/tx/${trade.txDigest}` : null,
+      walrusAggregatorUrl: `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${trade.blobId}`,
+      issuedAt: new Date().toISOString(),
+      live: !!live,
+    };
+    navigator.clipboard?.writeText(JSON.stringify(receipt, null, 2)).then(() => {
+      setReceiptCopied(true);
+      setTimeout(() => setReceiptCopied(false), 1800);
+    }).catch(() => { /* clipboard blocked */ });
+  };
   return (
     <Card pad={0} style={{ overflow: "hidden", borderColor: live ? "var(--accent)" : undefined }}>
       <div
@@ -266,6 +291,27 @@ function UnifiedRow({ trade, live }: { trade: SettledTrade & { code?: string }; 
                   <Icon name="ext" size={15} /> View on SuiScan
                 </a>
               )}
+              {/* Real machine-readable receipt: copies a full JSON payload
+                  with all on-chain references, suitable for archiving or
+                  forwarding to an accounting / compliance system. */}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); copyReceipt(); }}
+                style={{
+                  marginTop: 8,
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  background: receiptCopied ? "color-mix(in oklab, var(--good) 14%, var(--deep))" : "var(--deep)",
+                  border: `1px solid ${receiptCopied ? "var(--good)" : "var(--border)"}`,
+                  borderRadius: 99,
+                  padding: "5px 12px",
+                  fontSize: 12, fontWeight: 700,
+                  color: receiptCopied ? "var(--good)" : "var(--text-dim)",
+                  cursor: "pointer",
+                }}
+              >
+                <Icon name={receiptCopied ? "check" : "doc"} size={12} sw={2.4} />
+                {receiptCopied ? "Receipt copied" : "Copy JSON receipt"}
+              </button>
             </div>
           </div>
         </div>

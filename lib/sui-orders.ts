@@ -607,6 +607,79 @@ export async function fetchMakerReputation(
   return map;
 }
 
+/* ============ Recent activity (multi-event merged feed) ============ */
+
+export type ActivityItem = {
+  kind: "posted" | "settled";
+  orderId: string;
+  actor: string;          // maker for posted, settler/taker for settled
+  pair: string;           // e.g., "SUI/USDC"
+  txDigest: string;
+  timestampMs: number;
+};
+
+/** Merge recent OrderPosted + OrderSettled into a single time-sorted feed.
+ *  Two RPC calls in parallel. Falls back to [] gracefully on any failure. */
+export async function listRecentActivity(
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+  limit = 20,
+): Promise<ActivityItem[]> {
+  if (!SEALED_PAIR_PACKAGE_ID) return [];
+  const queryEvent = async (suffix: string, limit: number) => {
+    try {
+      const res = await fetch("/api/sui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: "suix_queryEvents",
+          params: [
+            { MoveEventType: `${SEALED_PAIR_PACKAGE_ID}::${MODULE}::${suffix}` },
+            null,
+            limit,
+            true,
+          ],
+          network,
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as { result?: QueryEventsResp };
+      return json.result?.data ?? [];
+    } catch {
+      return [];
+    }
+  };
+  const [posted, settled] = await Promise.all([
+    queryEvent("OrderPosted", limit),
+    queryEvent("OrderSettled", limit),
+  ]);
+  const items: ActivityItem[] = [];
+  for (const evt of posted) {
+    const p = evt.parsedJson as Partial<OrderPostedEvent>;
+    if (!p.order_id || !p.maker) continue;
+    items.push({
+      kind: "posted",
+      orderId: p.order_id,
+      actor: p.maker,
+      pair: `${p.give_kind ?? "?"}/${p.get_kind ?? "?"}`,
+      txDigest: evt.id.txDigest,
+      timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+    });
+  }
+  for (const evt of settled) {
+    const p = evt.parsedJson as { order_id?: string };
+    if (!p.order_id) continue;
+    items.push({
+      kind: "settled",
+      orderId: p.order_id,
+      actor: p.order_id,                 // OrderSettled doesn't include settler addr
+      pair: "",                          // unknown without a second hop; ticker degrades gracefully
+      txDigest: evt.id.txDigest,
+      timestampMs: evt.timestampMs ? Number(evt.timestampMs) : 0,
+    });
+  }
+  return items.sort((a, b) => b.timestampMs - a.timestampMs).slice(0, limit);
+}
+
 /* ============ Move module introspection ============ */
 
 /** Shape of the slice we care about from `sui_getNormalizedMoveModule`. */

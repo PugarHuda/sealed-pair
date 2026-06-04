@@ -173,10 +173,19 @@ function RoleToggle({ role, onChange }: { role: Role; onChange: (r: Role) => voi
 // while the first Tatum RPC call completes. Capped at 50 entries — the same
 // page-size the poll asks for — so it can't grow unbounded.
 const LIVE_CACHE_KEY = `sealedpair:live-orders:${SUI_NETWORK_FOR_EVENTS}`;
+const LIVE_CACHE_VERSION_KEY = `sealedpair:live-orders-version:${SUI_NETWORK_FOR_EVENTS}`;
+// Bump whenever zombie-filter logic or eventToOrder shape changes so users
+// drop stale entries (e.g. already-settled orders persisting in old cache).
+const LIVE_CACHE_VERSION = 3;
 
 function readLiveCache(): Order[] {
   if (typeof window === "undefined") return [];
   try {
+    const ver = Number(window.localStorage.getItem(LIVE_CACHE_VERSION_KEY) ?? "0");
+    if (ver !== LIVE_CACHE_VERSION) {
+      window.localStorage.removeItem(LIVE_CACHE_KEY);
+      return [];
+    }
     const raw = window.localStorage.getItem(LIVE_CACHE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Order[];
@@ -189,6 +198,7 @@ function readLiveCache(): Order[] {
 function writeLiveCache(orders: Order[]) {
   if (typeof window === "undefined") return;
   try {
+    window.localStorage.setItem(LIVE_CACHE_VERSION_KEY, String(LIVE_CACHE_VERSION));
     window.localStorage.setItem(LIVE_CACHE_KEY, JSON.stringify(orders.slice(0, 50)));
   } catch {
     // Quota or private-mode failure — caching is best-effort.
