@@ -397,7 +397,9 @@ export function SettleCeremony({
   order, onDone, onClose,
 }: {
   order: Order;
-  onDone: () => void;
+  /** Receives the real on-chain digest + connected taker address when the
+   *  on-chain path executed. Omitted when running in mock/demo mode. */
+  onDone: (result?: { digest: string; takerAddr: string }) => void;
   onClose: () => void;
 }) {
   const t = order.terms;
@@ -577,7 +579,15 @@ emit Receipt { blob: 0x…, digest }`}
               </a>
             </div>
           )}
-          <Btn full size="lg" variant="primary" icon="shield" onClick={onDone}>View receipt in the Vault</Btn>
+          <Btn
+            full
+            size="lg"
+            variant="primary"
+            icon="shield"
+            onClick={() => onDone(realDigest && account?.address ? { digest: realDigest, takerAddr: account.address } : undefined)}
+          >
+            View receipt in the Vault
+          </Btn>
         </div>
       )}
       {settleError && (

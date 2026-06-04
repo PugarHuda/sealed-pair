@@ -317,6 +317,10 @@ export async function listOpenOrders(opts: {
       result?: Array<{ data?: { content?: { fields?: Record<string, unknown> } } }>;
     };
     const items = stateJson.result ?? [];
+    // Guard against a partial response: if the gateway returned fewer
+    // objects than we asked for, the index-aligned filter would silently
+    // drop valid orders from the tail. Fall back to candidates instead.
+    if (items.length !== candidates.length) return candidates;
     return candidates.filter((_, i) => {
       const fields = items[i]?.data?.content?.fields;
       if (!fields) return false;          // object missing → it was deleted/never existed
@@ -508,7 +512,7 @@ export async function listSettledEvents(opts: {
  */
 export async function enrichSettledEvents(
   events: SettledEvent[],
-  network: "mainnet" | "testnet" | "devnet" = "devnet",
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
 ): Promise<SettledTrade[]> {
   if (events.length === 0) return [];
   try {
@@ -601,6 +605,45 @@ export async function fetchMakerReputation(
     map.set(shortKey, existing);    // alias: short → same stats record
   }
   return map;
+}
+
+/* ============ Move module introspection ============ */
+
+/** Shape of the slice we care about from `sui_getNormalizedMoveModule`. */
+export type NormalizedModule = {
+  exposedFunctions: Record<string, {
+    visibility: string;
+    isEntry: boolean;
+    parameters: unknown[];
+  }>;
+  structs: Record<string, { abilities?: { abilities: string[] } }>;
+  // The full event types live in `structs` with the `Copy + Drop` ability
+  // set in Move 2024-edition; that's how the chain reports them.
+};
+
+/** Fetch the on-chain Move module structure for the deployed sealed_pair::order.
+ *  Returns null when the package isn't deployed yet. Pure RPC read — no signing,
+ *  works for any visitor. */
+export async function fetchDeployedModule(
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+): Promise<NormalizedModule | null> {
+  if (!SEALED_PAIR_PACKAGE_ID) return null;
+  try {
+    const res = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "sui_getNormalizedMoveModule",
+        params: [SEALED_PAIR_PACKAGE_ID, MODULE],
+        network,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { result?: NormalizedModule };
+    return json.result ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Side-effect: fmt is re-exported in case a caller wants synced formatting.

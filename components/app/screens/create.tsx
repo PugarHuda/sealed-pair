@@ -78,8 +78,11 @@ export default function CreateScreen({
   // just check the prefix + a reasonable hex length so paste-with-trailing-
   // whitespace doesn't block the user; downstream code lower-cases for match.
   const targetClean = targetTaker.trim().toLowerCase();
+  // Sui addresses are exactly 32 bytes → "0x" + 64 hex chars. Ethereum's
+  // 42-char addresses must NOT pass — they'd be stored, then never match
+  // any Sui wallet, making the order invisible to everyone.
   const targetLooksValid =
-    audience === "ALL" || (targetClean.startsWith("0x") && /^0x[0-9a-f]{40,64}$/.test(targetClean));
+    audience === "ALL" || (targetClean.startsWith("0x") && /^0x[0-9a-f]{64}$/.test(targetClean));
   const targetError = audience === "PRIVATE" && targetTaker.length > 0 && !targetLooksValid;
 
   const draft: CreateDraft = {

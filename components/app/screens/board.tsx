@@ -101,6 +101,10 @@ export default function BoardScreen({
           </div>
         }
       />
+      {/* Matching opportunities: aggregate the currently-displayed orders
+          (post-filters) into per-pair depth so makers see which pairs
+          actually have counterparties active. Real on-chain data — no mock. */}
+      <MatchingPanel orders={orders.filter((o) => o.state !== "SETTLED")} walletShort={walletShort} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 20 }}>
         {filtered.map((o) => {
           // Look up reputation by maker.handle (short address form), which is
@@ -125,6 +129,84 @@ export default function BoardScreen({
             : "No quotes match. Be the first — seal one."}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Matching opportunities: per-pair depth + your-pair counterparties. */
+/* Real aggregation of on-chain orders. No mock numbers — if no live  */
+/* orders exist, this panel renders nothing.                          */
+/* ------------------------------------------------------------------ */
+function MatchingPanel({ orders, walletShort }: { orders: Order[]; walletShort: string | null }) {
+  if (orders.length < 2) return null;
+  type Key = string;
+  const pairKey = (o: Order): Key => `${o.give}/${o.get}`;
+  // Aggregate counts per pair (combining both sides into one row).
+  const pairs = new Map<string, { give: string; get: string; sells: number; buys: number }>();
+  for (const o of orders) {
+    if (!o.orderObj.startsWith("0x")) continue; // ignore demo seeds
+    const k = `${o.give}/${o.get}`;
+    const cur = pairs.get(k) ?? { give: o.give, get: o.get, sells: 0, buys: 0 };
+    if (o.side === "BUY") cur.buys += 1; else cur.sells += 1;
+    pairs.set(k, cur);
+  }
+  // Pairs the user has at least one order in — these are "your active pairs".
+  const myPairKeys = new Set(
+    walletShort
+      ? orders
+          .filter((o) => typeof o.maker !== "string" && o.maker.handle === walletShort)
+          .map(pairKey)
+      : [],
+  );
+  const ranked = Array.from(pairs.entries())
+    .sort((a, b) => (b[1].sells + b[1].buys) - (a[1].sells + a[1].buys))
+    .slice(0, 4);
+  if (ranked.length === 0) return null;
+
+  return (
+    <div style={{
+      background: "var(--surface)", border: "1px solid var(--border-soft)",
+      borderRadius: "var(--r-md)", padding: "16px 20px", marginBottom: 22,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 12 }}>
+        <Icon name="layers" size={16} style={{ color: "var(--accent-2)" }} />
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 14 }}>
+          Pair depth · matching opportunities
+        </div>
+        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-faint)" }}>
+          aggregated from live OrderPosted events
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+        {ranked.map(([k, p]) => {
+          const total = p.sells + p.buys;
+          const mine = myPairKeys.has(k);
+          return (
+            <div
+              key={k}
+              style={{
+                padding: "10px 12px",
+                background: mine ? "color-mix(in oklab, var(--accent) 12%, var(--deep))" : "var(--deep)",
+                border: mine ? "1px solid var(--accent)" : "1px solid var(--border-soft)",
+                borderRadius: "var(--r-sm)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 700 }}>
+                {p.give} <span style={{ color: "var(--text-faint)" }}>→</span> {p.get}
+                {mine && (
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent)", letterSpacing: ".06em", marginLeft: "auto" }}>
+                    YOURS
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 6, fontVariantNumeric: "tabular-nums" }}>
+                {total} active · {p.sells} sell · {p.buys} buy
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

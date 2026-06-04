@@ -220,16 +220,38 @@ export default function AppPage() {
   const autoConnect = useAutoConnectWallet();
 
   // Hydrate cached live orders on mount — runs once, syncs with seed state.
+  // Also honours a `?order=0x...` deep-link query param: if a matching order
+  // exists in the cache or arrives from the next poll, we route straight
+  // into the Deal Room. This makes private/targeted orders shareable.
+  const [pendingDeepLink, setPendingDeepLink] = useState<string | null>(null);
   useEffect(() => {
     setHydrated(true);
     const cached = readLiveCache();
-    if (cached.length === 0) return;
-    setOrders((prev) => {
-      const seen = new Set(prev.map((o) => o.orderObj));
-      const fresh = cached.filter((o) => !seen.has(o.orderObj));
-      return fresh.length ? [...fresh, ...prev] : prev;
-    });
+    if (cached.length > 0) {
+      setOrders((prev) => {
+        const seen = new Set(prev.map((o) => o.orderObj));
+        const fresh = cached.filter((o) => !seen.has(o.orderObj));
+        return fresh.length ? [...fresh, ...prev] : prev;
+      });
+    }
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const target = params.get("order");
+      if (target) setPendingDeepLink(target.toLowerCase());
+    }
   }, []);
+
+  // Once orders contains the deep-linked id (either from cache or a poll),
+  // open the Deal Room and clear the pending state.
+  useEffect(() => {
+    if (!pendingDeepLink || !hydrated) return;
+    const match = orders.find((o) => o.orderObj.toLowerCase() === pendingDeepLink);
+    if (match) {
+      setActiveId(match.id);
+      setView("deal");
+      setPendingDeepLink(null);
+    }
+  }, [pendingDeepLink, orders, hydrated]);
 
   // Standalone refresh fn — used by the 30s poll AND fired manually right
   // after finishSeal so the user's brand-new on-chain order appears within
@@ -401,20 +423,27 @@ export default function AppPage() {
 
   /* settle flow */
   const beginSettle = (o: Order) => setSettleOrder(o);
-  const finishSettle = () => {
+  const finishSettle = (result?: { digest: string; takerAddr: string }) => {
     if (settleOrder) {
       const o = settleOrder;
+      // Prefer the REAL on-chain digest + connected taker address when
+      // SettleCeremony actually executed a PTB. Falls back to demo values
+      // only when running without a wallet (pure mock flow).
+      const realDigest = result?.digest;
+      const realTakerAddr = result?.takerAddr;
       updateOrder(o.id, {
         state: "SETTLED",
         revealed: true,
-        settleDigest: digest(),
+        settleDigest: realDigest ?? digest(),
         settledAt: "Just now",
-        taker: { name: PERSONAS[role].name, handle: PERSONAS[role].handle },
+        taker: realTakerAddr
+          ? { name: "You", handle: realTakerAddr }
+          : { name: PERSONAS[role].name, handle: PERSONAS[role].handle },
         escrow: {
           ...o.escrow,
           funded: true,
-          by: PERSONAS[role].name,
-          byAddr: PERSONAS[role].addr,
+          by: realTakerAddr ? "You" : PERSONAS[role].name,
+          byAddr: realTakerAddr ?? PERSONAS[role].addr,
         },
       });
     }

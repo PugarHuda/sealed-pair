@@ -10,7 +10,7 @@ import { MakerTag, lblS, valS } from "@/components/app/shared";
 import { decryptText, loadKey } from "@/lib/crypto";
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist } from "@/lib/sui-orders";
+import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, SUISCAN_HOST } from "@/lib/sui-orders";
 import { CounterOfferModal, CounterOffersPanel } from "@/components/app/counter-offer";
 
 const useTimeout = (fn: () => void, ms: number | null) => {
@@ -221,6 +221,16 @@ export default function DealScreen({
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelDigest, setCancelDigest] = useState<string | null>(null);
+  const [reaping, setReaping] = useState(false);
+  const [reapError, setReapError] = useState<string | null>(null);
+  const [reapDigest, setReapDigest] = useState<string | null>(null);
+  // Live "is this order past its deadline?" check — re-runs every minute.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const isExpired = !!order.expiresAtMs && order.expiresAtMs <= nowMs;
 
   // Pre-flight balance check: read the connected wallet's SUI balance so we
   // can warn the user *before* the wallet popup if their escrow can't fit.
@@ -388,6 +398,47 @@ export default function DealScreen({
     setPhase("revealed");
   };
 
+  // Anyone-can-call expiry reaper: invokes cancel_expired which transitions
+  // OPEN/LOCKED orders past their deadline to CANCELLED, refunding any
+  // locked escrow back to the taker. Permissionless ecosystem hygiene.
+  const reapExpired = async () => {
+    setReaping(true);
+    setReapError(null);
+    if (!(onChainEnabled && SEALED_PAIR_PACKAGE_ID && account)) {
+      onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
+      setReaping(false);
+      return;
+    }
+    try {
+      const tx = new Transaction();
+      tx.moveCall({
+        target: `${SEALED_PAIR_PACKAGE_ID}::order::cancel_expired`,
+        arguments: [tx.object(order.orderObj)],
+      });
+      const result = await signAndExecute({ transaction: tx });
+      const full = await suiClient.waitForTransaction({
+        digest: result.digest,
+        options: { showEffects: true },
+      });
+      const status = full.effects?.status?.status;
+      if (status !== "success") {
+        throw new Error(full.effects?.status?.error ?? "cancel_expired aborted");
+      }
+      setReapDigest(result.digest);
+      onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "Reap failed";
+      const hint = raw.includes("abort code: 3")
+        ? "Not expired yet — current epoch hasn't reached expiry_epoch on-chain."
+        : raw.includes("abort code: 0")
+        ? "Order is no longer in OPEN or LOCKED state."
+        : raw.slice(0, 200);
+      setReapError(hint);
+    } finally {
+      setReaping(false);
+    }
+  };
+
   // Cancel-open flow: lifts the order from OPEN → CANCELLED via a real
   // Move PTB. Only valid while still sealed (not yet locked). Errors map
   // to readable hints; success updates local state so the badge flips.
@@ -436,19 +487,51 @@ export default function DealScreen({
     phase === "revealed" ? "reveal" :
     phase === "settled" ? "proud" : "idle";
 
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyShareLink = () => {
+    if (typeof window === "undefined" || !order.orderObj.startsWith("0x")) return;
+    const url = `${window.location.origin}/app?order=${order.orderObj}`;
+    navigator.clipboard?.writeText(url).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1800);
+    }).catch(() => {/* clipboard blocked */});
+  };
+
   return (
     <div className="fade-up" style={{ maxWidth: 1080, margin: "0 auto" }}>
-      <button
-        onClick={() => onBack("board")}
-        style={{
-          background: "none", border: "none", color: "var(--text-dim)",
-          display: "inline-flex", alignItems: "center", gap: 7,
-          fontSize: 14, fontWeight: 600, marginBottom: 18, cursor: "pointer",
-          transform: "scaleX(-1)",
-        }}
-      >
-        <Icon name="chev" size={16} /> <span style={{ transform: "scaleX(-1)" }}>Back to board</span>
-      </button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 12 }}>
+        <button
+          onClick={() => onBack("board")}
+          style={{
+            background: "none", border: "none", color: "var(--text-dim)",
+            display: "inline-flex", alignItems: "center", gap: 7,
+            fontSize: 14, fontWeight: 600, cursor: "pointer",
+            transform: "scaleX(-1)",
+          }}
+        >
+          <Icon name="chev" size={16} /> <span style={{ transform: "scaleX(-1)" }}>Back to board</span>
+        </button>
+        {/* Share-link only meaningful for orders that exist on-chain. Demo /
+            mock seed orders don't survive a fresh navigation. */}
+        {order.orderObj.startsWith("0x") && order.orderObj.length === 66 && (
+          <button
+            onClick={copyShareLink}
+            style={{
+              background: linkCopied ? "color-mix(in oklab, var(--good) 14%, var(--deep))" : "var(--deep)",
+              border: `1px solid ${linkCopied ? "var(--good)" : "var(--border)"}`,
+              color: linkCopied ? "var(--good)" : "var(--text-dim)",
+              display: "inline-flex", alignItems: "center", gap: 7,
+              fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+              padding: "7px 14px", borderRadius: 99,
+              transition: "all .15s",
+            }}
+            title="Copy direct link to this order — useful for sharing private offers"
+          >
+            <Icon name={linkCopied ? "check" : "copy"} size={13} sw={2.4} />
+            {linkCopied ? "Link copied" : "Share link"}
+          </button>
+        )}
+      </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 22 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
@@ -484,6 +567,57 @@ export default function DealScreen({
               <div style={{ fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.4 }}>{pipGuide(phase, isMine)}</div>
             </div>
 
+            {/* Permissionless expiry reaper. Any wallet can clean up an
+                expired OPEN/LOCKED order via Move's cancel_expired. Outranks
+                the maker/taker branches when the deadline has passed. */}
+            {isExpired && (phase === "sealed" || phase === "funding") && (
+              <div
+                className="fade-up"
+                style={{
+                  background: "color-mix(in oklab, var(--warn) 18%, transparent)",
+                  border: "1px solid var(--warn)",
+                  borderRadius: "var(--r-sm)",
+                  padding: 14, marginBottom: 14,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "var(--warn)" }}>
+                  <Icon name="clock" size={14} /> Past deadline
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }}>
+                  Anyone can reap this order via <span className="mono">cancel_expired</span>.
+                  Locked escrow (if any) refunds to the taker.
+                </div>
+                {reapError && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--bad)", fontWeight: 600 }}>
+                    {reapError}
+                  </div>
+                )}
+                {reapDigest ? (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--good)", fontWeight: 700 }}>
+                    Reaped ·{" "}
+                    <a
+                      href={`${SUISCAN_HOST}/tx/${reapDigest}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "var(--good)", textDecoration: "underline" }}
+                    >
+                      view tx ↗
+                    </a>
+                  </div>
+                ) : (
+                  <Btn
+                    full
+                    variant="outline"
+                    icon="bolt"
+                    style={{ marginTop: 10 }}
+                    disabled={reaping}
+                    onClick={reapExpired}
+                  >
+                    {reaping ? "Reaping…" : "Reap expired order"}
+                  </Btn>
+                )}
+              </div>
+            )}
             {isMine && phase === "sealed" && (
               <>
                 <div style={{ background: "var(--deep)", borderRadius: "var(--r-sm)", padding: 14, marginBottom: 14 }}>
@@ -526,7 +660,7 @@ export default function DealScreen({
                   >
                     Order cancelled on-chain ·{" "}
                     <a
-                      href={`https://suiscan.xyz/devnet/tx/${cancelDigest}`}
+                      href={`${SUISCAN_HOST}/tx/${cancelDigest}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ color: "var(--good)", textDecoration: "underline" }}
@@ -747,7 +881,7 @@ export default function DealScreen({
               )}
               {lockTxDigest && (
                 <a
-                  href={`https://suiscan.xyz/devnet/tx/${lockTxDigest}`}
+                  href={`${SUISCAN_HOST}/tx/${lockTxDigest}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ fontSize: 12, color: "var(--accent)", textDecoration: "underline", marginTop: 6, fontFamily: "var(--font-mono)" }}

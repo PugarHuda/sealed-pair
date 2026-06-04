@@ -23,14 +23,22 @@ export function formatRemaining(ms: number): string {
 
 export default function ExpiryCountdown({ targetMs }: { targetMs: number }) {
   const [now, setNow] = useState<number>(() => targetMs);
-  // Initial sync with real clock — split from useState so SSR + first paint
-  // match (avoids hydration mismatch).
+  // Re-evaluate tick interval whenever crossing the 1-hour boundary so a
+  // long-running card that just slipped under 1h starts ticking by second.
+  // (The previous one-shot interval at mount stayed at 60s forever once
+  // chosen, missing the urgency switch entirely.)
+  const [urgentMode, setUrgentMode] = useState<boolean>(() => targetMs - Date.now() < HOUR_MS);
   useEffect(() => {
     setNow(Date.now());
-    const interval = targetMs - Date.now() < HOUR_MS ? 1_000 : 60_000;
-    const t = setInterval(() => setNow(Date.now()), interval);
+    const interval = urgentMode ? 1_000 : 60_000;
+    const t = setInterval(() => {
+      const next = Date.now();
+      setNow(next);
+      const shouldBeUrgent = targetMs - next < HOUR_MS;
+      if (shouldBeUrgent !== urgentMode) setUrgentMode(shouldBeUrgent);
+    }, interval);
     return () => clearInterval(t);
-  }, [targetMs]);
+  }, [targetMs, urgentMode]);
 
   const remaining = targetMs - now;
   const urgent = remaining < HOUR_MS && remaining > 0;

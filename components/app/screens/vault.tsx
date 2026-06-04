@@ -9,9 +9,12 @@ import { PageHead, lblS } from "@/components/app/shared";
 import {
   listSettledEvents,
   enrichSettledEvents,
+  fetchDeployedModule,
   packageStatus,
+  SEALED_PAIR_PACKAGE_ID,
   SettledTrade,
   MakerStats,
+  NormalizedModule,
   SUI_NETWORK_FOR_EVENTS,
   SUISCAN_HOST,
 } from "@/lib/sui-orders";
@@ -86,8 +89,18 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
     };
   }, [isLive]);
 
-  const totalVol = VOLUME_STATS.volume + settled.reduce((a, o) => a + (o.terms.counter || 0), 0);
-  const settledCount = VOLUME_STATS.settled + settled.length + liveTrades.length;
+  // Volume = real escrow_required sum (USDC-ish back-derivation from
+  // escrowDisplayLabel — "1,234 USDC" parses out as 1234). Falls back to
+  // demo VOLUME_STATS when there are no live trades yet so the dashboard
+  // still reads correctly at first paint.
+  const liveVolumeSum = liveTrades.reduce((acc, t) => {
+    const parsed = Number(t.escrowDisplayLabel.replace(/[^\d.]/g, ""));
+    return acc + (Number.isFinite(parsed) ? parsed : 0);
+  }, 0);
+  const totalVol = liveTrades.length === 0
+    ? VOLUME_STATS.volume + settled.reduce((a, o) => a + (o.terms.counter || 0), 0)
+    : liveVolumeSum + settled.reduce((a, o) => a + (o.terms.counter || 0), 0);
+  const settledCount = (liveTrades.length === 0 ? VOLUME_STATS.settled : 0) + settled.length + liveTrades.length;
   const mineLiveTrades = liveTrades.filter(isMineTrade);
   const mineDemoTrades = settled.map(fromOrder).filter(isMineTrade);
   const mineCount = mineLiveTrades.length + mineDemoTrades.length;
@@ -112,6 +125,9 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
       {/* Maker leaderboard — sorted by settle count, top 5 only. Renders
           nothing when repMap is empty / not yet loaded. */}
       <MakerLeaderboard repMap={repMap} />
+      {/* Real Move module introspection — RPC fetch of the deployed package's
+          normalised module structure. Proves the contract is really on-chain. */}
+      <DeployedContractPanel />
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <h3 style={{ fontSize: 17, whiteSpace: "nowrap" }}>Settlement history</h3>
         <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
@@ -310,6 +326,89 @@ function MakerLeaderboard({ repMap }: { repMap?: Map<string, MakerStats> }) {
             </span>
           </div>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+/* DeployedContractPanel — fetches the live on-chain Move module structure
+ * via sui_getNormalizedMoveModule and renders exposed functions + structs.
+ * Pure RPC read, no signing, no mock — works for any visitor.            */
+function DeployedContractPanel() {
+  const [mod, setMod] = useState<NormalizedModule | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    fetchDeployedModule(SUI_NETWORK_FOR_EVENTS)
+      .then((m) => { if (!cancelled) { setMod(m); setLoading(false); } })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!SEALED_PAIR_PACKAGE_ID) return null;
+  if (loading) return null;
+  if (!mod) return null;
+
+  const funcs = Object.entries(mod.exposedFunctions || {});
+  const structs = Object.entries(mod.structs || {});
+  const eventStructs = structs.filter(([, s]) => s.abilities?.abilities?.includes("Copy") && s.abilities?.abilities?.includes("Drop"));
+
+  return (
+    <Card pad={20} style={{ marginBottom: 22 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
+        <Icon name="anchor" size={16} style={{ color: "var(--accent-2)" }} />
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 15 }}>
+          Deployed contract · live introspection
+        </div>
+        <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-faint)" }}>
+          sui_getNormalizedMoveModule
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+        <Mono label="package" copyable>{SEALED_PAIR_PACKAGE_ID.slice(0, 14)}…{SEALED_PAIR_PACKAGE_ID.slice(-6)}</Mono>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+        <div>
+          <div style={{ ...lblS, marginBottom: 8 }}>Public functions ({funcs.length})</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {funcs.slice(0, 12).map(([name, f]) => (
+              <span
+                key={name}
+                title={`${f.visibility}${f.isEntry ? " · entry" : ""}`}
+                style={{
+                  fontFamily: "var(--font-mono)", fontSize: 11.5,
+                  padding: "3px 9px", borderRadius: 99,
+                  background: f.isEntry
+                    ? "color-mix(in oklab, var(--accent) 14%, transparent)"
+                    : "var(--surface-3)",
+                  color: f.isEntry ? "var(--accent)" : "var(--text-dim)",
+                  border: f.isEntry ? "1px solid color-mix(in oklab, var(--accent) 35%, transparent)" : "1px solid var(--border-soft)",
+                }}
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{ ...lblS, marginBottom: 8 }}>Emitted events ({eventStructs.length})</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {eventStructs.slice(0, 8).map(([name]) => (
+              <span
+                key={name}
+                style={{
+                  fontFamily: "var(--font-mono)", fontSize: 11.5,
+                  padding: "3px 9px", borderRadius: 99,
+                  background: "color-mix(in oklab, var(--good) 14%, transparent)",
+                  color: "var(--good)",
+                  border: "1px solid color-mix(in oklab, var(--good) 35%, transparent)",
+                }}
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
     </Card>
   );

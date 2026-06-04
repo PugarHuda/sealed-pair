@@ -45,6 +45,9 @@ export function CounterOfferModal({
         proposerShort: short(proposerAddr, 6, 4),
         terms: { amount, price, counter, note: note || undefined },
       });
+      // Reset busy BEFORE calling onDone so even if the parent keeps the
+      // modal mounted the Submit button isn't permanently disabled.
+      setBusy(false);
       onDone(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit");
