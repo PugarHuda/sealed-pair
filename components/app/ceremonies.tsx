@@ -149,6 +149,10 @@ export function SealCeremony({
   const [txDigest, setTxDigest] = useState<string | null>(null);
   const cipherPreview = useRef("");
   const started = useRef(false);
+  // Resolved escrow amount — stored in a ref so we can pass it back to
+  // finishSeal without mutating the order prop (props are frozen in
+  // React strict mode and the mutation would throw or silently drop).
+  const escrowMistRef = useRef<string | undefined>(undefined);
 
   // Wallet (D2/D3): when connected AND Move package deployed, we register
   // the Order on-chain for real. Otherwise step 4 remains a visual mock.
@@ -257,8 +261,9 @@ export function SealCeremony({
             // falls back to a safe 1000 if we can't read the system state.
             const currentEpoch = await fetchCurrentEpoch(SUI_NETWORK_FOR_EVENTS);
             const expiryEpoch = BigInt((currentEpoch > 0 ? currentEpoch : 0) + 30);
-            // Save resolved MIST so DealScreen.fund() uses the exact amount.
-            (order as { escrowRequiredMist?: string }).escrowRequiredMist = escrowMist.toString();
+            // Save resolved MIST in a ref (not on the props) so finishSeal
+            // can forward the exact amount that the on-chain order locks.
+            escrowMistRef.current = escrowMist.toString();
             const tx = new Transaction();
             tx.moveCall({
               target: `${SEALED_PAIR_PACKAGE_ID}::order::create_offer`,
@@ -376,7 +381,7 @@ export function SealCeremony({
               blobId: displayBlobId,
               publisher,
               txDigest: txDigest ?? undefined,
-              escrowRequiredMist: (order as { escrowRequiredMist?: string }).escrowRequiredMist,
+              escrowRequiredMist: escrowMistRef.current,
             })}
           >
             See it live on the board
@@ -481,14 +486,17 @@ emit Receipt { blob: 0x…, digest }`}
       ms: 1150,
     },
     {
-      label: "Executing on Sui mainnet",
-      detail: "via Tatum RPC · sui_executeTransactionBlock",
+      label: `Executing on Sui ${SUI_NETWORK_FOR_EVENTS}`,
+      detail: "wallet-signed · confirmed via suiClient.waitForTransaction",
       icon: "anchor",
       ms: 1250,
     },
     {
       label: "Receipt minted — proof on-chain forever",
-      detail: "digest " + digest().slice(0, 20) + "…",
+      // Use the real digest once we have it; show "pending…" until then so
+      // a re-render during waitingForWallet doesn't flicker through a
+      // fresh random `digest()` value every poll cycle.
+      detail: realDigest ? `digest ${realDigest.slice(0, 20)}…` : "digest pending…",
       icon: "doc",
       ms: 900,
     },

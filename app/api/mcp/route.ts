@@ -56,6 +56,24 @@ export async function GET() {
         },
       },
       {
+        name: "wallet_history",
+        description:
+          "Recent transaction blocks for a Sui address via Tatum Data API " +
+          "(suix_queryTransactionBlocks filtered FromAddress). Returns digest, " +
+          "timestamp, status, gas used per tx.",
+        endpoint: `/api/tatum-data/wallet-history`,
+        method: "GET",
+        inputSchema: {
+          type: "object",
+          properties: {
+            address: { type: "string", description: "0x + 64 hex Sui address" },
+            network: { type: "string", enum: ["mainnet", "testnet", "devnet"], default: "devnet" },
+            limit: { type: "integer", default: 10, maximum: 25 },
+          },
+          required: ["address"],
+        },
+      },
+      {
         name: "maker_stats",
         description:
           "Aggregate on-chain stats for a specific maker address: posted / settled / cancelled counts, " +

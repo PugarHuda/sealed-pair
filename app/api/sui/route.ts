@@ -31,6 +31,10 @@ const METHOD_ALLOWLIST = new Set<string>([
   // event + tx history (powers the live RFQ board + Vault)
   "suix_queryEvents",
   "suix_queryTransactionBlocks",
+  // tx-digest lookup (powers the digest verifier — confirms OrderSettled emitted)
+  "sui_getEvents",
+  // Move module introspection (powers the live deployed-contract panel)
+  "sui_getNormalizedMoveModule",
   // gas + system state (needed by frontend for expiry epoch calc)
   "suix_getReferenceGasPrice",
   "sui_getLatestSuiSystemState",

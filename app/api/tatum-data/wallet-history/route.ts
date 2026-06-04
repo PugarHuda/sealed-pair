@@ -40,10 +40,10 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(Number(url.searchParams.get("limit")) || 10, 25);
 
   if (!address || !/^0x[0-9a-fA-F]{64}$/.test(address)) {
-    return NextResponse.json({ error: "invalid address" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "invalid address" }, { status: 400 });
   }
   if (!(network in TATUM_URLS)) {
-    return NextResponse.json({ error: "invalid network" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "invalid network" }, { status: 400 });
   }
 
   const upstream = TATUM_URLS[network];
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     });
     if (!res.ok) {
       return NextResponse.json(
-        { error: `Tatum upstream ${res.status}`, latencyMs: Date.now() - start },
+        { ok: false, error: `Tatum upstream ${res.status}`, latencyMs: Date.now() - start },
         { status: 502 },
       );
     }
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
       error?: { message: string };
     };
     if (json.error) {
-      return NextResponse.json({ error: json.error.message, latencyMs: Date.now() - start }, { status: 502 });
+      return NextResponse.json({ ok: false, error: json.error.message, latencyMs: Date.now() - start }, { status: 502 });
     }
     const txs: WalletTx[] = (json.result?.data ?? []).map((tx) => {
       const gas = tx.effects?.gasUsed;
@@ -119,6 +119,7 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     return NextResponse.json(
       {
+        ok: false,
         error: e instanceof Error ? e.message : "fetch failed",
         latencyMs: Date.now() - start,
       },

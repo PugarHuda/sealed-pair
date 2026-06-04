@@ -11,7 +11,9 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 50);
+  // Defensive bounds: zero/negative/NaN all snap to default 20; max 50.
+  const rawLimit = parseInt(url.searchParams.get("limit") ?? "", 10);
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 20, 1), 50);
   try {
     const orders = await listOpenOrders({ network: SUI_NETWORK_FOR_EVENTS, limit });
     return NextResponse.json({

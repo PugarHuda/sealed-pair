@@ -95,18 +95,34 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const network = (url.searchParams.get("network") || "devnet") as Network;
   if (!(network in TATUM_URLS)) {
-    return NextResponse.json({ error: "invalid network" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "invalid network" }, { status: 400 });
   }
-  const [tatum, ...walrus] = await Promise.all([
-    probeTatum(network),
-    ...WALRUS_PUBLISHERS.map((u) => probeWalrusEndpoint(u, "publisher")),
-    ...WALRUS_AGGREGATORS.map((u) => probeWalrusEndpoint(u, "aggregator")),
-  ]);
-  const publishers = walrus.slice(0, WALRUS_PUBLISHERS.length);
-  const aggregators = walrus.slice(WALRUS_PUBLISHERS.length);
-  return NextResponse.json({
-    timestamp: Date.now(),
-    tatum,
-    walrus: { publishers, aggregators },
-  });
+  // Cap the whole probe at 4.5s so we never bump into Vercel's 5s free-tier
+  // function deadline. Beats waiting on a single hung publisher.
+  const overallTimeout = new Promise<never>((_, rej) =>
+    setTimeout(() => rej(new Error("integration-health overall timeout")), 4_500),
+  );
+  try {
+    const [tatum, ...walrus] = await Promise.race([
+      Promise.all([
+        probeTatum(network),
+        ...WALRUS_PUBLISHERS.map((u) => probeWalrusEndpoint(u, "publisher")),
+        ...WALRUS_AGGREGATORS.map((u) => probeWalrusEndpoint(u, "aggregator")),
+      ]),
+      overallTimeout,
+    ]);
+    const publishers = walrus.slice(0, WALRUS_PUBLISHERS.length);
+    const aggregators = walrus.slice(WALRUS_PUBLISHERS.length);
+    return NextResponse.json({
+      ok: true,
+      timestamp: Date.now(),
+      tatum,
+      walrus: { publishers, aggregators },
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "probe failed" },
+      { status: 502 },
+    );
+  }
 }

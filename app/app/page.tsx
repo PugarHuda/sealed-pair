@@ -488,21 +488,21 @@ export default function AppPage() {
   // landing page (the only real URL change in their browser history).
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Stable ref so the listener never tears down on every orders poll —
+    // previously [orders] re-registered every 30s, briefly missing
+    // popstate events that fired during the gap.
     const onPop = () => {
       window.scrollTo(0, 0);
       const params = new URLSearchParams(window.location.search);
       const orderQ = params.get("order");
       const viewQ = (params.get("view") as View | null) ?? "board";
       if (orderQ) {
-        const match = orders.find((o) => o.orderObj.toLowerCase() === orderQ.toLowerCase());
+        const match = ordersRef.current.find((o) => o.orderObj.toLowerCase() === orderQ.toLowerCase());
         if (match) {
           setActiveId(match.id);
           setView("deal");
           return;
         }
-        // Order not in local state yet — defer routing via pendingDeepLink
-        // AND fire a manual refresh so the deal room opens within seconds
-        // rather than waiting for the 30s interval to catch up.
         setPendingDeepLink(orderQ.toLowerCase());
         void refreshLiveOrders();
         return;
@@ -514,7 +514,11 @@ export default function AppPage() {
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [orders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshLiveOrders]);
+  // Keep the ref in sync without re-registering popstate.
+  const ordersRef = useRef<Order[]>(orders);
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
 
   /* seal flow */
   const beginSeal = (draft: CreateDraft) => {
@@ -533,7 +537,13 @@ export default function AppPage() {
     setSealDraft(o);
   };
   const finishSeal = (patch: { blobId: string; publisher?: string; txDigest?: string; escrowRequiredMist?: string }) => {
-    if (sealDraft) {
+    // For REAL on-chain seals we don't insert the local-mock order anymore
+    // — it has a 42-char placeholder orderObj that would coexist with the
+    // real 66-char on-chain row and produce a duplicate card for ~5s. The
+    // follow-up polls below pick up the real order from suix_queryEvents.
+    // For the demo/mock path (no wallet, no package), we still insert so
+    // the user sees feedback without polling.
+    if (sealDraft && !patch.txDigest) {
       const sealed: Order = {
         ...sealDraft,
         blobId: patch.blobId,
