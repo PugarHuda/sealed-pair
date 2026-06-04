@@ -12,6 +12,7 @@ import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@
 import { Transaction } from "@mysten/sui/transactions";
 import { SEALED_PAIR_PACKAGE_ID, computeEscrowMist, SUISCAN_HOST } from "@/lib/sui-orders";
 import { CounterOfferModal, CounterOffersPanel } from "@/components/app/counter-offer";
+import BlobInspector from "@/components/app/blob-inspector";
 
 const useTimeout = (fn: () => void, ms: number | null) => {
   useEffect(() => {
@@ -218,6 +219,7 @@ export default function DealScreen({
   const [walletBalanceMist, setWalletBalanceMist] = useState<bigint | null>(null);
   const [counterModalOpen, setCounterModalOpen] = useState(false);
   const [counterCount, setCounterCount] = useState(0);
+  const [blobInspectorOpen, setBlobInspectorOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelDigest, setCancelDigest] = useState<string | null>(null);
@@ -919,7 +921,22 @@ export default function DealScreen({
           )}
 
           <Card pad={18}>
-            <div style={{ ...lblS, marginBottom: 12 }}>Cryptographic commitment</div>
+            <div style={{ ...lblS, marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>Cryptographic commitment</span>
+              <button
+                type="button"
+                onClick={() => setBlobInspectorOpen(true)}
+                style={{
+                  background: "var(--deep)", border: "1px solid var(--border)",
+                  borderRadius: 99, padding: "3px 10px",
+                  fontSize: 10.5, fontWeight: 700, color: "var(--accent-2)",
+                  cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
+                  textTransform: "none", letterSpacing: 0,
+                }}
+              >
+                <Icon name="eye" size={11} sw={2.4} /> Inspect blob
+              </button>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <Mono label="blobId" copyable>{short(order.blobId, 11, 6)}</Mono>
               <Mono label="order" copyable>{short(order.orderObj, 10, 6)}</Mono>
@@ -971,6 +988,9 @@ export default function DealScreen({
             setCounterCount((n) => n + 1);
           }}
         />
+      )}
+      {blobInspectorOpen && (
+        <BlobInspector blobId={order.blobId} onClose={() => setBlobInspectorOpen(false)} />
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 // Brand-styled wallet connect/disconnect for Sealed Pair.
 // Uses Mysten dApp Kit hooks + their <ConnectModal> for the wallet picker UX.
 
-import { CSSProperties } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import {
   ConnectModal,
   useAutoConnectWallet,
@@ -12,6 +12,7 @@ import {
 } from "@mysten/dapp-kit";
 import Icon from "@/components/ui/icon";
 import { short } from "@/lib/data";
+import { CoinBalance, fetchWalletBalances, SUI_NETWORK_FOR_EVENTS } from "@/lib/sui-orders";
 
 const triggerStyle: CSSProperties = {
   display: "inline-flex",
@@ -94,39 +95,135 @@ export default function ConnectButton() {
   const walletName = currentWallet?.name || "wallet";
 
   return (
-    <div style={connectedStyle}>
-      <span
-        style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          background: "var(--good)",
-          boxShadow: "0 0 7px var(--good)",
-        }}
-      />
-      <span
-        title={`${walletName} · ${account.address}`}
-        style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}
-      >
-        {short(account.address, 6, 4)}
-      </span>
+    <PortfolioMenu
+      account={account}
+      walletName={walletName}
+      onDisconnect={() => disconnect()}
+    />
+  );
+}
+
+/** Connected-state pill with a click-to-open portfolio dropdown. Fetches
+ *  real balances via suix_getAllBalances; refreshes when the menu opens. */
+function PortfolioMenu({
+  account, walletName, onDisconnect,
+}: {
+  account: { address: string };
+  walletName: string;
+  onDisconnect: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [balances, setBalances] = useState<CoinBalance[]>([]);
+  const [loading, setLoading] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchWalletBalances(account.address, SUI_NETWORK_FOR_EVENTS)
+      .then((b) => { if (!cancelled) { setBalances(b); setLoading(false); } })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, account.address]);
+
+  // Click-outside close.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button
-        onClick={() => disconnect()}
-        title="Disconnect wallet"
-        style={{
-          border: "none",
-          background: "transparent",
-          color: "var(--text-faint)",
-          cursor: "pointer",
-          padding: "2px 8px",
-          fontSize: 16,
-          lineHeight: 1,
-          marginLeft: 2,
-        }}
-        aria-label="Disconnect"
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ ...connectedStyle, cursor: "pointer" }}
       >
-        ×
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--good)", boxShadow: "0 0 7px var(--good)" }} />
+        <span title={`${walletName} · ${account.address}`} style={{ fontFamily: "var(--font-mono)", fontSize: 12 }}>
+          {short(account.address, 6, 4)}
+        </span>
+        <span style={{ color: "var(--text-faint)", fontSize: 14, marginLeft: 2, marginRight: 4, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s", display: "inline-flex" }}>
+          <Icon name="chev" size={12} sw={2.4} style={{ transform: "rotate(90deg)" }} />
+        </span>
       </button>
+      {open && (
+        <div
+          className="fade-up"
+          style={{
+            position: "absolute", top: "calc(100% + 8px)", right: 0,
+            minWidth: 260,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--r-md)",
+            boxShadow: "0 20px 50px -20px #000",
+            zIndex: 60,
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border-soft)" }}>
+            <div style={{ fontSize: 11, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700 }}>
+              {walletName}
+            </div>
+            <div className="mono" style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 4, wordBreak: "break-all" }}>
+              {account.address}
+            </div>
+          </div>
+          <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+            <div style={{ fontSize: 11, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 700, marginBottom: 4 }}>
+              Portfolio · {SUI_NETWORK_FOR_EVENTS}
+            </div>
+            {loading && (
+              <div style={{ fontSize: 12, color: "var(--text-faint)" }}>Loading balances…</div>
+            )}
+            {!loading && balances.length === 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-faint)" }}>No coins held on this network.</div>
+            )}
+            {!loading && balances.map((b) => (
+              <div
+                key={b.coinType}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  padding: "6px 0",
+                  borderBottom: "1px solid var(--border-soft)",
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{b.symbol}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-faint)", fontFamily: "var(--font-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={b.coinType}>
+                    {b.coinType.startsWith("0x2::sui::") ? "native" : b.coinType.slice(0, 14) + "…" + b.coinType.slice(-8)}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{b.display}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>{b.coinObjectCount} obj{b.coinObjectCount === 1 ? "" : "s"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => { setOpen(false); onDisconnect(); }}
+            style={{
+              width: "100%",
+              padding: "10px 14px",
+              background: "var(--deep)",
+              border: "none",
+              borderTop: "1px solid var(--border-soft)",
+              color: "var(--bad)",
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            Disconnect wallet
+          </button>
+        </div>
+      )}
     </div>
   );
 }

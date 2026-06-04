@@ -607,6 +607,82 @@ export async function fetchMakerReputation(
   return map;
 }
 
+/* ============ Wallet portfolio ============ */
+
+export type CoinBalance = {
+  coinType: string;
+  symbol: string;          // best-effort short name derived from type
+  totalBalance: string;    // raw u64 string
+  display: string;         // human-readable with assumed decimals
+  coinObjectCount: number;
+};
+
+/** Pretty-format a u64 balance string given an assumed decimals. */
+function formatBalance(raw: string, decimals: number): string {
+  const big = BigInt(raw);
+  if (big === 0n) return "0";
+  const divisor = 10n ** BigInt(decimals);
+  const whole = big / divisor;
+  const frac = big % divisor;
+  if (frac === 0n) return whole.toLocaleString("en-US");
+  const fracStr = frac.toString().padStart(decimals, "0").slice(0, 4).replace(/0+$/, "");
+  return `${whole.toLocaleString("en-US")}${fracStr ? "." + fracStr : ""}`;
+}
+
+/** Best-effort symbol + decimals from a coinType. SUI is 9 decimals;
+ *  USDC/USDT on Sui are 6; everything else is rendered raw with 0 decimals. */
+function describeCoin(coinType: string): { symbol: string; decimals: number } {
+  if (coinType === "0x2::sui::SUI" || coinType.endsWith("::sui::SUI")) return { symbol: "SUI", decimals: 9 };
+  const last = coinType.split("::").pop() ?? coinType;
+  const symbol = last.toUpperCase();
+  if (symbol === "USDC" || symbol === "USDT") return { symbol, decimals: 6 };
+  if (symbol === "WAL") return { symbol, decimals: 9 };
+  if (symbol === "DEEP") return { symbol, decimals: 6 };
+  return { symbol, decimals: 0 };
+}
+
+/** Fetch real wallet balances for the connected address. One RPC call. */
+export async function fetchWalletBalances(
+  address: string,
+  network: "mainnet" | "testnet" | "devnet" = SUI_NETWORK_FOR_EVENTS,
+): Promise<CoinBalance[]> {
+  try {
+    const res = await fetch("/api/sui", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "suix_getAllBalances",
+        params: [address],
+        network,
+      }),
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as {
+      result?: Array<{ coinType: string; totalBalance: string; coinObjectCount: number }>;
+    };
+    const items = json.result ?? [];
+    return items
+      .map<CoinBalance>((b) => {
+        const { symbol, decimals } = describeCoin(b.coinType);
+        return {
+          coinType: b.coinType,
+          symbol,
+          totalBalance: b.totalBalance,
+          display: formatBalance(b.totalBalance, decimals),
+          coinObjectCount: b.coinObjectCount,
+        };
+      })
+      .sort((a, b) => {
+        // SUI first, then everything else by raw balance desc
+        if (a.symbol === "SUI") return -1;
+        if (b.symbol === "SUI") return 1;
+        return Number(BigInt(b.totalBalance) - BigInt(a.totalBalance));
+      });
+  } catch {
+    return [];
+  }
+}
+
 /* ============ Recent activity (multi-event merged feed) ============ */
 
 export type ActivityItem = {

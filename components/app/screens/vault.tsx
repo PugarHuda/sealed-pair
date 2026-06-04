@@ -133,8 +133,15 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
         <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
           powered by Tatum · {isLive ? "suix_queryEvents + sui_multiGetObjects (live)" : "demo data until Move package deployed"}
         </span>
-        {walletAddr && (
-          <div style={{ marginLeft: "auto" }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {(liveTrades.length > 0 || settled.length > 0) && (
+            <CsvExportButton
+              liveTrades={liveTradesToShow}
+              demoTrades={settledToShow.map(fromOrder)}
+              scopeIsMine={scope === "MINE"}
+            />
+          )}
+          {walletAddr && (
             <Segmented
               value={scope}
               onChange={(v) => setScope(v as "ALL" | "MINE")}
@@ -143,8 +150,8 @@ export default function VaultScreen({ settled, repMap }: { settled: Order[]; rep
                 { value: "MINE", label: mineCount > 0 ? `Mine · ${mineCount}` : "Mine" },
               ]}
             />
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {liveTradesToShow.map((t) => <UnifiedRow key={t.orderId} trade={t} live />)}
@@ -457,5 +464,79 @@ function DeployedContractPanel() {
         </div>
       </div>
     </Card>
+  );
+}
+
+/* CsvExportButton — generates a real CSV download of all on-chain refs
+ * for the currently-displayed settled trades. No mocks, no formatting
+ * tricks — empty fields stay empty, numeric fields preserve precision.  */
+function CsvExportButton({
+  liveTrades, demoTrades, scopeIsMine,
+}: {
+  liveTrades: SettledTrade[];
+  demoTrades: SettledTrade[];
+  scopeIsMine: boolean;
+}) {
+  const [done, setDone] = useState(false);
+  const handleClick = () => {
+    if (typeof window === "undefined") return;
+    const rows: string[] = [];
+    const escape = (v: unknown) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return s.includes(",") || s.includes("\"") || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    rows.push([
+      "kind", "network", "orderId", "blobId",
+      "settleDigest", "settledAtEpoch", "maker", "taker",
+      "give", "get", "escrow", "suiScanUrl", "walrusUrl",
+    ].join(","));
+    const network = SUI_NETWORK_FOR_EVENTS;
+    const writeRow = (t: SettledTrade, kind: "live" | "demo") => {
+      rows.push([
+        kind, network, t.orderId, t.blobId,
+        t.txDigest || "", t.settledAtEpoch || "", t.maker || "", t.taker || "",
+        t.give, t.get, t.escrowDisplayLabel,
+        t.txDigest ? `${SUISCAN_HOST}/tx/${t.txDigest}` : "",
+        `https://aggregator.walrus-testnet.walrus.space/v1/blobs/${t.blobId}`,
+      ].map(escape).join(","));
+    };
+    liveTrades.forEach((t) => writeRow(t, "live"));
+    demoTrades.forEach((t) => writeRow(t, "demo"));
+    const csv = rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const scope = scopeIsMine ? "mine" : "all";
+    const date = new Date().toISOString().slice(0, 10);
+    a.download = `sealed-pair-settlements-${scope}-${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDone(true);
+    setTimeout(() => setDone(false), 1800);
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      title="Export visible settlements as CSV"
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 7,
+        background: done ? "color-mix(in oklab, var(--good) 14%, var(--deep))" : "var(--deep)",
+        border: `1px solid ${done ? "var(--good)" : "var(--border)"}`,
+        borderRadius: 99,
+        padding: "6px 13px",
+        fontSize: 12, fontWeight: 700,
+        color: done ? "var(--good)" : "var(--text-dim)",
+        cursor: "pointer",
+      }}
+    >
+      <Icon name={done ? "check" : "doc"} size={12} sw={2.4} />
+      {done ? "Downloaded" : "CSV export"}
+    </button>
   );
 }
