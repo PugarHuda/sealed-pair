@@ -1,0 +1,40 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/mcp.json",
+  "name": "sealed-pair",
+  "description": "MCP tools for the Sealed Pair sealed P2P OTC dApp on Sui — read open RFQ orders, verify settlement digests, look up maker reputation.",
+  "version": "0.1.0",
+  "servers": {
+    "sealed-pair-http": {
+      "transport": "http",
+      "baseUrl": "https://sealed-pair.vercel.app/api/mcp",
+      "tools": [
+        {
+          "name": "list_open_orders",
+          "description": "List the most recent sealed RFQ orders. Returns orderId, blobId, pair, side, sizeBand, maker, expiry, escrow.",
+          "endpoint": "/list-orders",
+          "method": "GET",
+          "queryParams": { "limit": "integer (1-50, default 20)" }
+        },
+        {
+          "name": "verify_settle_digest",
+          "description": "Confirm a Sui tx digest emitted OrderSettled from the deployed sealed_pair::order package.",
+          "endpoint": "/verify-digest",
+          "method": "GET",
+          "queryParams": { "digest": "base58 Sui tx digest (43-44 chars)" }
+        },
+        {
+          "name": "maker_stats",
+          "description": "Aggregate on-chain stats (posted, settled, cancelled, success rate, tier) for a maker address.",
+          "endpoint": "/maker-stats",
+          "method": "GET",
+          "queryParams": { "address": "0x + 64 hex" }
+        }
+      ]
+    }
+  },
+  "notes": [
+    "All tools are read-only and route through Tatum's Sui RPC gateway with server-side API key custody.",
+    "Mutations (create_offer, lock_with_escrow, settle, cancel_open, cancel_expired) require wallet signing and are not exposed.",
+    "GET /api/mcp returns the live tool catalog with full JSON schemas."
+  ]
+}

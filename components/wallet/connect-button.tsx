@@ -105,6 +105,8 @@ export default function ConnectButton() {
 
 /** Connected-state pill with a click-to-open portfolio dropdown. Fetches
  *  real balances via suix_getAllBalances; refreshes when the menu opens. */
+type RecentTx = { digest: string; timestampMs: number | null; status: string; kind: string | null };
+
 function PortfolioMenu({
   account, walletName, onDisconnect,
 }: {
@@ -115,15 +117,27 @@ function PortfolioMenu({
   const [open, setOpen] = useState(false);
   const [balances, setBalances] = useState<CoinBalance[]>([]);
   const [loading, setLoading] = useState(false);
+  const [recent, setRecent] = useState<RecentTx[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true);
-    fetchWalletBalances(account.address, SUI_NETWORK_FOR_EVENTS)
-      .then((b) => { if (!cancelled) { setBalances(b); setLoading(false); } })
-      .catch(() => { if (!cancelled) setLoading(false); });
+    setRecentLoading(true);
+    // Parallel: balance via suix_getAllBalances + recent tx history via
+    // Tatum's Data API (suix_queryTransactionBlocks filtered FromAddress).
+    Promise.all([
+      fetchWalletBalances(account.address, SUI_NETWORK_FOR_EVENTS).then((b) => {
+        if (!cancelled) { setBalances(b); setLoading(false); }
+      }).catch(() => { if (!cancelled) setLoading(false); }),
+      fetch(`/api/tatum-data/wallet-history?address=${account.address}&network=${SUI_NETWORK_FOR_EVENTS}&limit=5`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((j) => { if (!cancelled && j?.transactions) setRecent(j.transactions); })
+        .catch(() => { /* swallow — recent activity is best-effort */ })
+        .finally(() => { if (!cancelled) setRecentLoading(false); }),
+    ]);
     return () => { cancelled = true; };
   }, [open, account.address]);
 
@@ -244,6 +258,34 @@ function PortfolioMenu({
               </div>
             ))}
           </div>
+          {(recent.length > 0 || recentLoading) && (
+            <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-soft)", display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+              <div style={{ fontSize: 11, color: "var(--accent-2)", textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
+                Recent activity
+                <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--text-faint)", letterSpacing: 0, textTransform: "none", fontWeight: 600 }}>
+                  via Tatum Data API
+                </span>
+              </div>
+              {recentLoading && (
+                <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>Loading…</div>
+              )}
+              {!recentLoading && recent.slice(0, 5).map((tx) => {
+                const tone = tx.status === "success" ? "var(--good)" : tx.status === "failure" ? "var(--bad)" : "var(--text-faint)";
+                const when = tx.timestampMs
+                  ? new Date(tx.timestampMs).toLocaleTimeString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                  : "—";
+                return (
+                  <div key={tx.digest} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: tone, flex: "0 0 auto" }} />
+                    <span className="mono" style={{ fontSize: 10.5, color: "var(--text-dim)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tx.digest.slice(0, 14)}…
+                    </span>
+                    <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{when}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <button
             onClick={() => { setOpen(false); onDisconnect(); }}
             style={{

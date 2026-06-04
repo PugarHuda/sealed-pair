@@ -42,16 +42,41 @@ OTC trades today force a brutal trade-off: post on a DEX and the mempool front-r
 
 ## Trader-grade features
 
-Beyond the core seal → escrow → reveal → settle flow, the app ships a stack
-of features that turn the prototype into a workable RFQ desk surface:
+Beyond the core seal → escrow → reveal → settle flow, the app ships a long
+stack of features that turn the prototype into a workable RFQ desk surface
+and surface the integration depth to anyone inspecting the live site.
 
-- 🔍 **Mine filter** — Board and Vault both have an `Everyone / Mine N` toggle. "Mine" is derived from the connected wallet address against `OrderPosted.maker`, so your offers stay yours across refreshes, devices, and ghost browser sessions.
-- 🏅 **Per-maker reputation** — Each card shows a `Nx settled` chip aggregated from on-chain `OrderSettled` events. Hidden when settles=0 so first-timers don't read as "zero reputation".
-- 🔁 **Counter-offer flow** — Takers can propose alternate terms instead of accepting. The counter is AES-encrypted and uploaded as its own Walrus blob (same content-addressed commitment property as the parent order); the maker sees pending counter-offers with `Accept / Reject` actions.
-- 🔔 **Watchlist + browser notifications** — `(pair, side)` criteria stored locally; every poll cycle diffs fresh orders against criteria and fires a top-right toast plus a `Notification` API ping. Seen-order memory persists so a future add doesn't backfire historic matches.
-- 🛡️ **Pre-flight balance check** — Reads `getBalance` for the connected wallet before unblocking the Fund button. If escrow + gas reserve exceeds balance, the button disables and a warning surfaces the shortfall in SUI.
-- ⚛️ **Atomic lock + reveal PTB** — `lock_with_escrow` and `mark_revealed` move calls bundled into a single Programmable Transaction Block. Removes the cross-fullnode race where `mark_revealed` was hitting an `EWrongState` abort before lock propagated.
-- 🪦 **Zombie filter** — `listOpenOrders` does a second `sui_multiGetObjects` batched read against every `OrderPosted` id and drops anything whose on-chain `state != OPEN`. Stops users from clicking already-settled cards and surfacing confusing `MoveAbort code 0` errors.
+### Discovery & negotiation
+- 🔍 **Mine filter** on Board + Vault — chain-derived from the connected wallet's address, not local state.
+- 🏅 **Bronze/Silver/Gold maker reputation tiers** — aggregated from real `OrderSettled` events, displayed as colored chips on every card.
+- 🔁 **Counter-offer flow** — takers propose alternate terms; each counter is AES-encrypted and uploaded as its own **Walrus blob** (same content-addressed commitment as the parent order). Maker sees pending counters with Accept / Reject.
+- 🔒 **Private / targeted orders** — when sealing, the maker can scope an offer to a specific wallet. Board hides it from non-targets; Deal Room gates the Fund button.
+- 🔔 **Watchlist + browser notifications** — `(pair, side)` criteria poll against fresh `OrderPosted` events; matches fire an in-app toast + Notification API ping.
+- 🎯 **Pair filter via URL** — `?pair=SUI-USDC` deep-link auto-filters the board; clickable pair chips set the same filter.
+- ⏱ **Live expiry countdown** — per-card ticker, color shifts yellow under 1h and red on expiry. Adaptive tick rate; full QA-tested.
+
+### Settlement integrity
+- ⚛️ **Atomic lock + reveal PTB** — both move calls bundled into one Programmable Transaction Block. Eliminates the cross-fullnode race where `mark_revealed` was hitting `EWrongState` before lock propagated.
+- 🪦 **Zombie filter** — second `sui_multiGetObjects` batched read drops any `OrderPosted` whose current state is no longer OPEN.
+- 🛡️ **Pre-flight balance + state check** — `getBalance` warns of insufficient SUI before unblocking Fund; `sui_getObject` confirms state==OPEN before the wallet signs.
+- 💀 **`cancel_expired` reaper** — anyone-can-call Move PTB to clean up expired orders. Real abort code decoding (`ENotExpired = 4`) for friendly errors.
+
+### Audit surface
+- 🏛️ **Live contract introspection** — `sui_getNormalizedMoveModule` fetches the deployed package's functions + emitted event types in real time. Proves the contract is really on-chain.
+- 🩺 **Integration health panel** — server-side parallel fan-out probes the Tatum Sui RPC + every Walrus publisher and aggregator we use, with real latency every 30s.
+- 🔬 **Walrus blob inspector** — fetch any blobId, see real bytes, Content-Type, latency, served-by header.
+- ✅ **Settle digest verifier** — paste any digest, calls `sui_getEvents`, confirms it emitted `OrderSettled` from this exact package id.
+- 🧪 **Sui object explorer** — paste any `0x…` id, see raw on-chain content.
+- 📑 **JSON receipt + CSV export** — every settled trade can be exported as JSON or batch-downloaded as CSV with full on-chain references.
+- 📈 **Order lifetime timeline** — 5 parallel event queries reconstruct every event that touched a given order (Posted → Locked → Revealed → Settled / Cancelled).
+- 🧑‍💼 **Maker profile modal** — click any maker avatar to see their full address, posted/settled/cancelled counts, success rate, and 6 most recent posts.
+- 🪙 **Wallet portfolio** — `suix_getAllBalances` powers a real balance dropdown; "low SUI" surfaces the network-appropriate faucet.
+- ⌨️ **Keyboard shortcuts** — `/` focuses search, `r` refreshes, `Esc` closes any modal.
+
+### AI integration
+- 🤖 **MCP-compatible tools** — `/api/mcp` returns a JSON catalog of read-only tools (`list_open_orders`, `verify_settle_digest`, `maker_stats`). The `.mcp.json` config drops straight into Claude Desktop or any MCP client. See [AI integration](#ai-integration) below.
+
+[See the full feature list in CHANGELOG.md if present, or run `git log --oneline` for the timeline.]
 
 ## Why it wins
 
@@ -190,6 +215,35 @@ Audit trail. Live on-chain `OrderSettled` events stream in via Tatum's `suix_que
 `All trades / Mine N` toggle filters to rows where either the maker or the taker matches the connected wallet — works across devices because matching is derived from chain truth, not localStorage. The four stat cards mix demo data with live on-chain counts so the dashboard reads correctly even before the Move package is deployed.
 
 ---
+
+## AI integration
+
+Sealed Pair exposes its on-chain reads as **MCP-compatible HTTP tools** so any
+AI agent (Claude Desktop, Cursor, Continue, custom orchestrator) can query
+the live RFQ board, verify settlement digests, and read maker reputation
+without needing to wire the Sui RPC plumbing themselves.
+
+```bash
+# Live tool catalog
+curl https://sealed-pair.vercel.app/api/mcp
+
+# List the current open orders (zombie-filtered)
+curl 'https://sealed-pair.vercel.app/api/mcp/list-orders?limit=10'
+
+# Verify any settlement tx digest came from THIS package
+curl 'https://sealed-pair.vercel.app/api/mcp/verify-digest?digest=<base58>'
+
+# Aggregate maker reputation
+curl 'https://sealed-pair.vercel.app/api/mcp/maker-stats?address=0x...'
+```
+
+A canonical client config is shipped at [`.mcp.json`](./.mcp.json). All tools
+are read-only — mutations require wallet signing and stay out-of-scope for
+the MCP surface.
+
+Bonus: a real-time **Tatum Data API** surface at `/api/tatum-data/wallet-history`
+proxies `suix_queryTransactionBlocks` filtered `FromAddress` so the connected
+wallet's recent transactions show up directly in the portfolio dropdown.
 
 ## Roadmap
 
