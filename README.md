@@ -5,6 +5,7 @@
 > Sealed peer-to-peer OTC trading on Sui. Negotiate in the dark, settle in the open.
 
 **Live demo:** https://sealed-pair.vercel.app
+**Pitch deck (live, keyboard-nav):** https://sealed-pair.vercel.app/slide
 **Repo:** https://github.com/PugarHuda/sealed-pair
 
 Built for the **Tatum × Walrus hackathon** (Build on Sui, May 23 – Jun 6, 2026).
@@ -74,7 +75,7 @@ and surface the integration depth to anyone inspecting the live site.
 - ⌨️ **Keyboard shortcuts** — `/` focuses search, `r` refreshes, `Esc` closes any modal.
 
 ### AI integration
-- 🤖 **MCP-compatible tools** — `/api/mcp` returns a JSON catalog of read-only tools (`list_open_orders`, `verify_settle_digest`, `maker_stats`). The `.mcp.json` config drops straight into Claude Desktop or any MCP client. See [AI integration](#ai-integration) below.
+- 🤖 **MCP-compatible tools** — `/api/mcp` returns a JSON catalog of 4 read-only tools (`list_open_orders`, `wallet_history`, `verify_settle_digest`, `maker_stats`). The `.mcp.json` config drops straight into Claude Desktop or any MCP client. See [AI integration](#ai-integration) below.
 
 [See the full feature list in CHANGELOG.md if present, or run `git log --oneline` for the timeline.]
 
@@ -222,7 +223,7 @@ Sealed Pair touches every layer of the Tatum stack relevant to this hackathon:
 
 | Tatum surface | How we use it |
 |---|---|
-| **RPC Nodes** (Sui mainnet/testnet/devnet) | 12 RPC methods through `/api/sui` proxy — events, objects, modules, balances, dry-run, dev-inspect, dynamic fields |
+| **RPC Nodes** (Sui mainnet/testnet/devnet) | 14 RPC methods through `/api/sui` proxy — events, objects, modules, balances, dry-run, dev-inspect, dynamic fields |
 | **RPC Gateway** | Each `sui-<network>.gateway.tatum.io` URL with `x-api-key` server-side custody. Latency probed live in `/api/integration-health`. |
 | **Data API** | `suix_queryTransactionBlocks` powers the wallet portfolio's recent-activity feed (`/api/tatum-data/wallet-history`) |
 | **MCP** | Our `.mcp.json` composes our sealed-pair tools with Tatum's official MCP server for full Sui RPC access from any AI client |

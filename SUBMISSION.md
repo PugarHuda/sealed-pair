@@ -3,6 +3,7 @@
 > Sealed peer-to-peer OTC trading on Sui. Negotiate in the dark, settle in the open.
 
 **Live demo:** https://sealed-pair.vercel.app
+**Pitch deck:** https://sealed-pair.vercel.app/slide  *(10 slides · arrow-key / spacebar nav · live)*
 **GitHub:** https://github.com/PugarHuda/sealed-pair
 **Move package (devnet):** `0x73d1acdda1d468d49e340023e7c3cc578466327dfa6109d93c5ce767640c99eb`
 
@@ -26,7 +27,7 @@ We surveyed all 599 Sui Overflow 2025 submissions and the full Walrus showcase. 
 
 ## Tatum integration depth
 
-**10 distinct Sui RPC methods** via the Tatum gateway, all through a server-side proxy with API-key custody:
+**14 distinct Sui RPC methods** via the Tatum gateway, all through a server-side proxy with API-key custody:
 
 | Method | What it powers |
 |---|---|
@@ -40,6 +41,10 @@ We surveyed all 599 Sui Overflow 2025 submissions and the full Walrus showcase. 
 | `suix_queryTransactionBlocks` | Tatum Data API surface — recent activity in portfolio |
 | `sui_getChainIdentifier` | Network pill health |
 | `sui_getLatestCheckpointSequenceNumber` | Live checkpoint counter |
+| `sui_dryRunTransactionBlock` | Pre-flight tx simulation (allowlist) |
+| `sui_devInspectTransactionBlock` | Read-only execution simulation (allowlist) |
+| `suix_getDynamicFields` | Dynamic-field enumeration (allowlist) |
+| `suix_getDynamicFieldObject` | Single dynamic-field read (allowlist) |
 
 **4 read-only MCP tools** at `/api/mcp/*` expose this surface to AI agents (Claude Desktop, Cursor, custom orchestrators). Catalog at https://sealed-pair.vercel.app/api/mcp; canonical client config at [`.mcp.json`](./.mcp.json).
 
@@ -84,7 +89,7 @@ Move unit tests pass (`move/tests/order_tests.move`).
 
 ## Trader-grade feature set
 
-38 features beyond the core 5-step flow. Highlights:
+40 features beyond the core 5-step flow. Highlights:
 
 **Discovery**: Mine filter, pair-depth panel, live activity ticker (5 event types), bronze/silver/gold reputation tiers, expiry countdown.
 
