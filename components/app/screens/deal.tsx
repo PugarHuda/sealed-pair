@@ -24,6 +24,8 @@ const useTimeout = (fn: () => void, ms: number | null) => {
   }, []);
 };
 
+type Phase = "sealed" | "funding" | "revealing" | "revealed" | "settled";
+
 function PolicyCheckLine({ ok, delay, children }: { ok?: boolean; delay: number; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
   useTimeout(() => setShow(true), delay);
@@ -199,7 +201,6 @@ export default function DealScreen({
   onUpdate: (id: number, patch: Partial<Order>) => void;
   onRoleSwitch?: (r: "marina" | "theo") => void;
 }) {
-  type Phase = "sealed" | "funding" | "revealing" | "revealed" | "settled";
   const [phase, setPhase] = useState<Phase>(
     order.state === "SETTLED" ? "settled" : order.revealed ? "revealed" : "sealed",
   );
@@ -669,6 +670,22 @@ export default function DealScreen({
         </Badge>
       </div>
 
+      {/* Centralized transaction status strip. Shows the most recent action's
+          outcome at the top of the deal room so success/failed/pending isn't
+          buried in a corner. Priority order: error > pending > success.
+          Auto-fades nothing — the user can re-read the digest later. */}
+      <TxStatusStrip
+        phase={phase}
+        lockTxDigest={lockTxDigest}
+        cancelDigest={cancelDigest}
+        reapDigest={reapDigest}
+        fundError={fundError}
+        cancelError={cancelError}
+        reapError={reapError}
+        cancelling={cancelling}
+        reaping={reaping}
+      />
+
       <div className="deal-grid">
         <TermsPanel order={order} revealed={revealed} revealing={revealing} revealStyle={revealStyle} decryptFailed={decryptFailed} />
 
@@ -1071,5 +1088,181 @@ export default function DealScreen({
         <BlobInspector blobId={order.blobId} onClose={() => setBlobInspectorOpen(false)} />
       )}
     </div>
+  );
+}
+
+/* ============== TxStatusStrip ==============
+ *
+ * Centralized "what just happened?" surface for the Deal Room. Replaces the
+ * problem where success/pending/fail signals were scattered across the page:
+ * lockTxDigest down at line 1025, cancelDigest inside the cancel button,
+ * fundError in a banner inside the fund section, etc. Users had to hunt for
+ * the indicator that mattered.
+ *
+ * Priority resolution (only ONE state renders at a time):
+ *   1. Any error (red)
+ *   2. Any "pending" intent (yellow, with spinner)
+ *   3. Any success digest (green, with SuiScan link)
+ *   4. Nothing — strip hidden, no chrome.
+ *
+ * Why a single strip beats per-action toasts: the deal room only ever runs
+ * ONE PTB at a time (fund OR cancel OR reap; settle is in a modal). No
+ * stacking, no queue management, no z-index battles. Just one row at the
+ * top that always means "the most recent thing you did".                    */
+function TxStatusStrip({
+  phase, lockTxDigest, cancelDigest, reapDigest,
+  fundError, cancelError, reapError,
+  cancelling, reaping,
+}: {
+  phase: Phase;
+  lockTxDigest: string | null;
+  cancelDigest: string | null;
+  reapDigest: string | null;
+  fundError: string | null;
+  cancelError: string | null;
+  reapError: string | null;
+  cancelling: boolean;
+  reaping: boolean;
+}) {
+  // --- 1. Errors first (red) ---
+  const error = fundError || cancelError || reapError;
+  if (error) {
+    return (
+      <StripShell tone="bad" icon="bolt">
+        <b>Transaction failed.</b>
+        <span style={{ opacity: 0.85, marginLeft: 6 }}>{error.slice(0, 180)}</span>
+      </StripShell>
+    );
+  }
+
+  // --- 2. Pending signers (yellow, spinning) ---
+  if (phase === "funding") {
+    return (
+      <StripShell tone="warn" spinning>
+        <b>Funding escrow…</b>
+        <span style={{ opacity: 0.85, marginLeft: 6 }}>
+          Signing lock_with_escrow + mark_revealed in your wallet · single PTB
+        </span>
+      </StripShell>
+    );
+  }
+  if (cancelling) {
+    return (
+      <StripShell tone="warn" spinning>
+        <b>Cancelling offer…</b>
+        <span style={{ opacity: 0.85, marginLeft: 6 }}>Signing cancel_open in your wallet</span>
+      </StripShell>
+    );
+  }
+  if (reaping) {
+    return (
+      <StripShell tone="warn" spinning>
+        <b>Reaping expired order…</b>
+        <span style={{ opacity: 0.85, marginLeft: 6 }}>Signing cancel_expired</span>
+      </StripShell>
+    );
+  }
+  if (phase === "revealing") {
+    return (
+      <StripShell tone="seal" spinning>
+        <b>Revealing terms…</b>
+        <span style={{ opacity: 0.85, marginLeft: 6 }}>
+          Policy satisfied — pulling key shares from Seal servers
+        </span>
+      </StripShell>
+    );
+  }
+
+  // --- 3. Success states (green with SuiScan link) ---
+  if (cancelDigest) {
+    return <SuccessStrip label="Offer cancelled" digest={cancelDigest} />;
+  }
+  if (reapDigest) {
+    return <SuccessStrip label="Expired order reaped" digest={reapDigest} />;
+  }
+  if (phase === "settled") {
+    return <SuccessStrip label="Settled on-chain — open the Vault for the receipt" />;
+  }
+  if (lockTxDigest) {
+    // Lock landed but not yet settled — celebrate the lock specifically.
+    return <SuccessStrip label="Escrow locked on-chain" digest={lockTxDigest} />;
+  }
+
+  // --- 4. Nothing to announce ---
+  return null;
+}
+
+function StripShell({
+  tone, icon, spinning, children,
+}: {
+  tone: "bad" | "warn" | "good" | "seal";
+  icon?: "bolt" | "check" | "clock";
+  spinning?: boolean;
+  children: React.ReactNode;
+}) {
+  const color = `var(--${tone})`;
+  return (
+    <div
+      className="fade-up"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "11px 16px",
+        marginBottom: 18,
+        background: `color-mix(in oklab, ${color} 12%, var(--surface))`,
+        border: `1px solid ${color}`,
+        borderRadius: "var(--r-sm)",
+        color,
+        fontSize: 13.5,
+        fontWeight: 600,
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      {spinning ? (
+        <span
+          aria-hidden
+          style={{
+            width: 14, height: 14,
+            border: `2px solid color-mix(in oklab, ${color} 35%, transparent)`,
+            borderTopColor: color,
+            borderRadius: "50%",
+            animation: "spin .9s linear infinite",
+            flex: "0 0 auto",
+          }}
+        />
+      ) : (
+        <span style={{ color, flex: "0 0 auto" }}>
+          <Icon name={icon ?? "check"} size={15} sw={2.6} />
+        </span>
+      )}
+      <div style={{ color: "var(--text)", flex: 1, lineHeight: 1.45 }}>{children}</div>
+    </div>
+  );
+}
+
+function SuccessStrip({ label, digest }: { label: string; digest?: string }) {
+  return (
+    <StripShell tone="good" icon="check">
+      <b>{label}</b>
+      {digest && (
+        <a
+          href={`${SUISCAN_HOST}/tx/${digest}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            marginLeft: 10,
+            fontFamily: "var(--font-mono)",
+            fontSize: 12.5,
+            color: "var(--good)",
+            textDecoration: "underline",
+          }}
+          title="View transaction on SuiScan"
+        >
+          {digest.slice(0, 10)}…{digest.slice(-6)} ↗
+        </a>
+      )}
+    </StripShell>
   );
 }
