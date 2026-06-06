@@ -1,20 +1,11 @@
 {
-  "01-cover":   "OTC trading on Sui today forces a brutal trade-off. Post on a DEX and the mempool front-runs your size. Call a desk and trust them with the spread. Sealed Pair is a third option.",
-  "02-problem": "DEXes leak. Mempool sees your order before it fills, slippage takes the rest. OTC desks ghost. They see the spread. And try proving to your DAO what you agreed to — the paper trail sits off-chain if it exists at all.",
-  "03-shape":   "Maker encrypts the terms locally and uploads the ciphertext to Walrus. The blob ID is the cryptographic commitment. A sealed quote hits the public RFQ board. Taker funds a refundable escrow on Sui. Key auto-releases. Atomic transaction settles both legs.",
-  "04-why":     "We surveyed every Sui Overflow project. Plenty use one of these primitives. Nobody combines commit-reveal, plus Seal-style selective disclosure, plus Walrus content addressing, plus atomic settlement, for OTC. This is the gap we filled.",
-  "05-tatum":   "Fourteen distinct Sui RPC methods through the Tatum gateway. Three networks auto-switching. Four Tatum products wired end-to-end. Sixty-nine millisecond median latency, probed live every thirty seconds.",
-  "06-walrus":  "The insight: blob ID is the BLAKE2b hash of the ciphertext. Storing it on-chain turns Walrus from a CDN into a content-addressed cryptographic commitment. Swap the bytes anywhere, and the commitment provably breaks.",
-  "07-shipped": "Forty features in fourteen days. Solo build. Seventy plus QA findings across eleven rounds, all patched. Five Move transactions wired live. Two settled trades on-chain right now.",
-  "08-mcp":     "Tatum's official MCP ships ten Blockchain Data tools across twenty plus chains, but Sui is not one of them yet. Our four Sui-native MCP tools fill that gap. Compose both servers — an AI agent gets first-class Sui plus twenty-two other chains in one config.",
-  "09-judge":   "Mapped to every judging weight. Walrus and Tatum integration. Technical quality. Creativity. Presentation. Targeted at both bonus prizes: Best Walrus Integration and Best Use of Tatum Tools.",
-  "10-cta":     "Stop trusting the desk. Sealed Pair. Private quotes. Public settlement. On Sui.",
-
-  "demo-01-landing": "Sealed Pair landing page. Live at sealed-pair dot vercel dot app. The hero spells out the trade-off: move size without tipping your hand.",
-  "demo-02-board":   "The RFQ board. Twenty five plus real on-chain orders polled every thirty seconds via Tatum's gateway. Every order is a real Sui object. Every blob ID is a real Walrus blob.",
-  "demo-03-pair":    "Pair depth widget — aggregated from live OrderPosted events. Sui dollars, dollars Sui, WAL pairs, all sized live.",
-  "demo-04-deal":    "Click any order — deal room. The terms are sealed. The Walrus blob is the commitment. Fund escrow and the key auto-releases.",
-  "demo-05-vault":   "The Vault — two settled trades, on-chain. Each settled row has a real digest, clickable to SuiScan. Live contract introspection below proves the Move package is deployed.",
-  "demo-06-mcp":     "And the MCP catalog. Four read-only tools any AI agent can call. Fills the Sui-native gap Tatum's own MCP doesn't yet cover.",
-  "demo-07-end":     "Sealed Pair. Built with Tatum and Walrus. On Sui. Source on GitHub."
+  "c01-hook":   "OTC trading on Sui today forces a trade-off. Post on a DEX, the mempool front-runs you. Call a desk, trust them with the spread. Sealed Pair is a third option.",
+  "c02-shape":  "Maker encrypts terms locally and uploads ciphertext to Walrus. The blob ID is the cryptographic commitment. A sealed quote hits the public board. Taker funds escrow. Key auto-releases. Atomic transaction settles both legs.",
+  "c03-walrus": "The insight: blob ID is the BLAKE2b hash of the ciphertext. Storing it on-chain turns Walrus from a CDN into a content-addressed cryptographic commitment.",
+  "c04-tatum":  "Fourteen distinct Sui RPC methods through the Tatum gateway. Three networks. Sixty-nine millisecond median latency. Probed live every thirty seconds.",
+  "c05-mcp":    "Tatum's own MCP doesn't yet ship Sui-native Blockchain Data tools. We fill that gap with four read-only Sui-native MCP tools. Compose both — AI agents get first-class Sui plus twenty-two other chains.",
+  "c06-demo-board":  "Live board. Twenty-five plus real on-chain orders. Polled every thirty seconds via Tatum. Pair depth aggregated from OrderPosted events.",
+  "c07-demo-vault":  "The Vault. Two settled trades on-chain right now. Each row has a real digest, clickable to SuiScan. Live contract introspection below proves the Move package is deployed.",
+  "c08-demo-mcp":    "MCP catalog. Four Sui-native tools any AI agent can call. Fills the gap Tatum's own MCP doesn't yet cover.",
+  "c09-cta":    "Sealed Pair. Private quotes. Public settlement. On Sui."
 }

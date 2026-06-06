@@ -56,6 +56,12 @@ export type Order = {
    *  eventToOrder using post-time + 30-epoch window. Undefined for static
    *  seed orders, which keep the legacy `expiresIn` string fallback. */
   expiresAtMs?: number;
+  /** The literal Sui epoch when this order's `expiry_epoch` triggers.
+   *  Compare to current epoch (from sui_getLatestSuiSystemState) to
+   *  determine if the order is *truly* expired on-chain. The string
+   *  expiresIn and absolute expiresAtMs are display estimates only;
+   *  this number is the chain's source of truth. */
+  expiryEpoch?: number;
   createdAgo: string;
   expiresIn: string;
   settleDigest: string | null;

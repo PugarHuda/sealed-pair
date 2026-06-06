@@ -115,9 +115,9 @@ const CASES = [
   },
   {
     name: "short-expiry",
-    desc: "Short expiry · 2 epochs · time-pressured",
+    desc: "Short expiry · 60 epochs · time-pressured (relatively)",
     terms: () => ({ give: "USDC", get: "SUI", amount: 6_500, price: 0.255 }),
-    expiryEpochs: 2,
+    expiryEpochs: 60,
     note: "Filling against an end-of-day target.",
   },
   {
@@ -137,9 +137,9 @@ const CASES = [
   // ---- Round 2 archetypes (added during pre-submission polish) ----
   {
     name: "fresh-quick",
-    desc: "Fresh quick · 4 epoch expiry · medium retail SUI sell",
+    desc: "Fresh quick · 75 epoch expiry · medium retail SUI sell",
     terms: () => ({ give: "SUI", get: "USDC", amount: 8_500, price: 3.91 }),
-    expiryEpochs: 4,
+    expiryEpochs: 75,
     note: "Quick fill — first taker wins.",
   },
   {
@@ -307,7 +307,10 @@ async function main() {
 
     process.stdout.write("  create_offer ptb…       ");
     const escrowMist = escrowMistFor(terms);
-    const expiry = c.expiryEpochs ?? 30;
+    // Default expiry bumped to 90 epochs (~90 days on devnet) so judges
+    // visiting the live demo always have fresh, non-expired orders to try.
+    // Individual cases can still set a smaller `expiryEpochs` for variety.
+    const expiry = c.expiryEpochs ?? 90;
     const expiryEpoch = (currentEpoch > 0n ? currentEpoch : 0n) + BigInt(expiry);
     const policyId = "0x" + "00".repeat(31) + "01";
     const tx = new Transaction();

@@ -9,15 +9,30 @@ import { MakerTag, Ghost } from "./shared";
 import ExpiryCountdown from "./expiry-countdown";
 
 export default function OrderCard({
-  order, isMine, onOpen, rep, onMakerProfile,
+  order, isMine, onOpen, rep, onMakerProfile, currentEpoch,
 }: {
   order: Order;
   isMine: boolean;
   onOpen: (o: Order) => void;
   rep?: MakerStats | null;
   onMakerProfile?: (addr: string) => void;
+  /** Current on-chain Sui epoch (from sui_getLatestSuiSystemState). When
+   *  this is non-null AND `order.expiryEpoch <= currentEpoch`, the card
+   *  renders an EXPIRED badge and the CTA changes — protects users from
+   *  spending gas on a tx that would abort with EExpired. */
+  currentEpoch?: number | null;
 }) {
-  const stateBadge = {
+  // Detect on-chain expiry. The state badge stays OPEN/LOCKED/etc until
+  // someone calls cancel_expired and flips it; meanwhile we overlay an
+  // EXPIRED indicator so users don't fund a doomed order.
+  const isOnChainExpired =
+    order.state === "OPEN" &&
+    typeof order.expiryEpoch === "number" &&
+    typeof currentEpoch === "number" &&
+    order.expiryEpoch <= currentEpoch;
+  const stateBadge = isOnChainExpired ? (
+    <Badge tone="bad" icon="clock">Expired on-chain</Badge>
+  ) : {
     OPEN:     <Badge tone="open"   icon="lock">Sealed</Badge>,
     LOCKED:   <Badge tone="locked" icon="clock">Escrow funded</Badge>,
     REVEALED: <Badge tone="seal"   icon="unlock">Revealed</Badge>,
@@ -142,8 +157,16 @@ export default function OrderCard({
         </span>
       </div>
       <div style={{ padding: "0 20px 18px" }}>
-        <Btn full variant={isMine ? "ghost" : "primary"} iconRight="chev">
-          {isMine ? "Manage offer" : "Inspect & fund escrow"}
+        <Btn
+          full
+          variant={isOnChainExpired ? "outline" : isMine ? "ghost" : "primary"}
+          iconRight="chev"
+        >
+          {isOnChainExpired
+            ? (isMine ? "Manage expired offer" : "View expired terms")
+            : isMine
+            ? "Manage offer"
+            : "Inspect & fund escrow"}
         </Btn>
       </div>
     </Card>

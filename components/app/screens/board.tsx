@@ -28,6 +28,38 @@ export default function BoardScreen({
   lastRefreshMs?: number | null;
 }) {
   const [refreshing, setRefreshing] = useState(false);
+
+  // Current on-chain Sui epoch — compared to each order's expiry_epoch to
+  // mark expired cards. Fetched once on mount + every 60s. If the fetch
+  // fails (Tatum 429, transient), `currentEpoch` stays null and cards
+  // simply don't show the EXPIRED state — fail-open is fine since the
+  // pre-flight in DealScreen catches it before the wallet signs.
+  const [currentEpoch, setCurrentEpoch] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchEpoch = async () => {
+      try {
+        const res = await fetch("/api/sui", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            method: "sui_getLatestSuiSystemState",
+            params: [],
+            network: SUI_NETWORK_FOR_EVENTS,
+          }),
+        });
+        if (!res.ok) return;
+        const json = (await res.json()) as { result?: { epoch?: string | number } };
+        const epoch = Number(json.result?.epoch);
+        if (Number.isFinite(epoch) && !cancelled) setCurrentEpoch(epoch);
+      } catch {
+        /* transient — try again next tick */
+      }
+    };
+    fetchEpoch();
+    const t = setInterval(fetchEpoch, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
   const handleRefresh = async () => {
     if (!onRefresh) return;
     setRefreshing(true);
@@ -209,6 +241,7 @@ export default function BoardScreen({
               key={o.id}
               order={o}
               isMine={isMineOrder(o)}
+              currentEpoch={currentEpoch}
               onOpen={onOpen}
               rep={rep}
               onMakerProfile={onMakerProfile}

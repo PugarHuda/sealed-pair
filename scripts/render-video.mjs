@@ -44,6 +44,42 @@ const argv = process.argv.slice(2);
 const arg = (n, d) => { const m = argv.find((a) => a.startsWith(`${n}=`)); return m ? m.split("=")[1] : d; };
 const BASE = arg("--base", "https://sealed-pair.vercel.app");
 const ONLY = arg("--only", "");
+const COMBINED = argv.includes("--combined");
+const PITCH_ONLY = argv.includes("--pitch-only");
+
+const PITCH_ONLY_SCENES = [
+  { id: "p1-hook",   slide: 2,  fallback: 8 },
+  { id: "p2-shape",  slide: 3,  fallback: 10 },
+  { id: "p3-walrus", slide: 6,  fallback: 9 },
+  { id: "p4-mcp",    slide: 8,  fallback: 10 },
+  { id: "p5-cta",    slide: 10, fallback: 6 },
+];
+
+async function renderPitchOnly(browser) {
+  log("=== PITCH-ONLY (≤ 1:00) ===");
+  const ctx = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  const sceneFiles = [];
+  for (const s of PITCH_ONLY_SCENES) {
+    log(`  scene ${s.id} → /slide?n=${s.slide}`);
+    await page.goto(`${BASE}/slide?n=${s.slide}`, { waitUntil: "networkidle", timeout: 30000 });
+    await page.addStyleTag({
+      content: `footer, [aria-label*="navigate"], [aria-label*="fullscreen"], [aria-label="Previous slide"], [aria-label="Next slide"] { display:none !important; }`,
+    }).catch(() => {});
+    await page.waitForTimeout(400);
+    const shot = path.join(SHOTS_DIR, `${s.id}.png`);
+    await page.screenshot({ path: shot, fullPage: false });
+    const audio = path.join(AUDIO_DIR, `${s.id}.wav`);
+    const scene = path.join(SCENES_DIR, `${s.id}.mp4`);
+    await buildScene({ id: s.id, imagePath: shot, audioPath: audio, outPath: scene, fallbackSeconds: s.fallback });
+    sceneFiles.push(scene);
+  }
+  await ctx.close();
+  const outPath = path.join(OUT_DIR, "pitch-only.mp4");
+  log("  concatenating → " + outPath);
+  await concatScenes(sceneFiles, outPath);
+  log(`  ✓ pitch-only.mp4 ready (${fs.statSync(outPath).size} bytes)`);
+}
 
 const SIZE = { width: 1920, height: 1080 };
 
@@ -249,6 +285,86 @@ async function renderDemo(browser) {
   log(`  ✓ demo.mp4 ready (${fs.statSync(outPath).size} bytes)`);
 }
 
+/* ============== COMBINED (≤ 3 min cap) ============== */
+
+const COMBINED_SCENES = [
+  {
+    id: "c01-hook", fallback: 11,
+    nav: async (page) => { await page.goto(`${BASE}/slide?n=2`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+  {
+    id: "c02-shape", fallback: 16,
+    nav: async (page) => { await page.goto(`${BASE}/slide?n=3`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+  {
+    id: "c03-walrus", fallback: 10,
+    nav: async (page) => { await page.goto(`${BASE}/slide?n=6`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+  {
+    id: "c04-tatum", fallback: 9,
+    nav: async (page) => { await page.goto(`${BASE}/slide?n=5`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+  {
+    id: "c05-mcp", fallback: 14,
+    nav: async (page) => { await page.goto(`${BASE}/slide?n=8`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+  {
+    id: "c06-demo-board", fallback: 11,
+    nav: async (page) => {
+      await page.goto(`${BASE}/app`, { waitUntil: "networkidle" });
+      await page.waitForTimeout(3000);
+      await page.evaluate(() => window.scrollTo({ top: 280, behavior: "instant" }));
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    id: "c07-demo-vault", fallback: 12,
+    nav: async (page) => {
+      await page.goto(`${BASE}/app?view=vault`, { waitUntil: "networkidle" });
+      await page.waitForTimeout(3500);
+      await page.evaluate(() => window.scrollTo({ top: 400, behavior: "instant" }));
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    id: "c08-demo-mcp", fallback: 8,
+    nav: async (page) => { await page.goto(`${BASE}/api/mcp`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+  {
+    id: "c09-cta", fallback: 6,
+    nav: async (page) => { await page.goto(`${BASE}/slide?n=10`, { waitUntil: "networkidle" }); await page.waitForTimeout(500); },
+  },
+];
+
+async function renderCombined(browser) {
+  log("=== COMBINED (pitch + demo, ≤ 3:00 cap) ===");
+  const ctx = await browser.newContext({ viewport: SIZE, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+
+  const sceneFiles = [];
+  for (const s of COMBINED_SCENES) {
+    log(`  scene ${s.id}`);
+    try { await s.nav(page); } catch (e) { log(`    nav error: ${e.message}`); }
+    // Hide slide footer controls for clean shot.
+    await page.addStyleTag({
+      content: `footer, [aria-label*="navigate"], [aria-label*="fullscreen"], [aria-label="Previous slide"], [aria-label="Next slide"] { display:none !important; }`,
+    }).catch(() => {});
+    await page.waitForTimeout(300);
+    const shot = path.join(SHOTS_DIR, `${s.id}.png`);
+    await page.screenshot({ path: shot, fullPage: false });
+    const audio = path.join(AUDIO_DIR, `${s.id}.wav`);
+    const scene = path.join(SCENES_DIR, `${s.id}.mp4`);
+    await buildScene({ id: s.id, imagePath: shot, audioPath: audio, outPath: scene, fallbackSeconds: s.fallback });
+    sceneFiles.push(scene);
+  }
+
+  await ctx.close();
+  const outPath = path.join(OUT_DIR, "combined.mp4");
+  log("  concatenating scenes → " + outPath);
+  await concatScenes(sceneFiles, outPath);
+  log(`  ✓ combined.mp4 ready (${fs.statSync(outPath).size} bytes)`);
+}
+
 /* ============== MAIN ============== */
 
 (async () => {
@@ -258,8 +374,12 @@ async function renderDemo(browser) {
 
   const browser = await chromium.launch({ headless: true });
   try {
-    if (!ONLY || ONLY === "pitch") await renderPitch(browser);
-    if (!ONLY || ONLY === "demo")  await renderDemo(browser);
+    if (PITCH_ONLY || ONLY === "pitch-only") { await renderPitchOnly(browser); }
+    else if (COMBINED || ONLY === "combined") { await renderCombined(browser); }
+    else {
+      if (!ONLY || ONLY === "pitch") await renderPitch(browser);
+      if (!ONLY || ONLY === "demo")  await renderDemo(browser);
+    }
   } finally {
     await browser.close();
   }

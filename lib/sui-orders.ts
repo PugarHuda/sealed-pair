@@ -381,6 +381,11 @@ function eventToOrder(evt: RpcEvent): Order | null {
     ? Number(evt.timestampMs) + EXPIRY_EPOCHS * EPOCH_MS
     : Date.now() + EXPIRY_EPOCHS * EPOCH_MS;
 
+  // The raw on-chain expiry epoch — this is the source of truth used by
+  // OrderCard / DealScreen to mark a card as EXPIRED. Different from
+  // expiresAtMs (a 30-epoch heuristic for the smooth countdown ticker).
+  const expiryEpochNum = Number(p.expiry_epoch);
+
   return {
     ...base,
     blobId,
@@ -389,6 +394,7 @@ function eventToOrder(evt: RpcEvent): Order | null {
     escrowRequiredMist: escrowMistStr,
     targetTaker: getTargetHint(blobId) ?? undefined,
     expiresAtMs,
+    expiryEpoch: Number.isFinite(expiryEpochNum) ? expiryEpochNum : undefined,
   };
 }
 
