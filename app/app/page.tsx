@@ -231,6 +231,51 @@ export default function AppPage() {
           window.history.replaceState({}, "", u.toString());
         }
       }
+      // ?install-counters=<base64> — installs demo counter-offers into
+      // localStorage so the maker view shows pending counters from other
+      // takers. Used by scripts/seed-counters.mjs to produce a one-time
+      // link the user opens to populate their browser with realistic
+      // negotiation activity. Best-effort: malformed payload is silently
+      // ignored (the rest of the URL still parses).
+      const installCounters = params.get("install-counters");
+      if (installCounters) {
+        try {
+          const decoded = JSON.parse(atob(installCounters)) as Array<{
+            orderId: string;
+            offers: Array<{
+              id: string;
+              orderId: string;
+              proposedBy: string;
+              proposedByShort: string;
+              blobId: string;
+              createdAt: number;
+              status: "pending" | "accepted" | "rejected";
+              termsPreview?: { amount: number; price: number; counter: number; note?: string };
+            }>;
+          }>;
+          if (Array.isArray(decoded)) {
+            const idxKey = "sealedpair:counters:index";
+            const rawIdx = window.localStorage.getItem(idxKey);
+            const idx: string[] = rawIdx ? JSON.parse(rawIdx) : [];
+            for (const entry of decoded) {
+              if (!entry.orderId || !Array.isArray(entry.offers)) continue;
+              const lsKey = `sealedpair:counters:${entry.orderId}`;
+              const existingRaw = window.localStorage.getItem(lsKey);
+              const existing = existingRaw ? JSON.parse(existingRaw) : [];
+              const existingIds = new Set(existing.map((o: { id: string }) => o.id));
+              const merged = [...existing, ...entry.offers.filter((o) => !existingIds.has(o.id))];
+              window.localStorage.setItem(lsKey, JSON.stringify(merged));
+              if (!idx.includes(entry.orderId)) idx.push(entry.orderId);
+            }
+            window.localStorage.setItem(idxKey, JSON.stringify(idx));
+          }
+        } catch {
+          /* malformed payload — ignore silently */
+        }
+        const u = new URL(window.location.href);
+        u.searchParams.delete("install-counters");
+        window.history.replaceState({}, "", u.toString());
+      }
       const target = params.get("order");
       if (target) {
         setPendingDeepLink(target.toLowerCase());
