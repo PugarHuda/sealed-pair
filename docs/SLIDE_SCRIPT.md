@@ -97,7 +97,7 @@
 
 > "Forty features in fourteen days. Solo build. Discovery surface, negotiation surface, settlement surface, audit and AI surface.
 >
-> Fifty-nine QA findings across ten rounds. Five Move PTBs wired live. Five OrderEvent types read end-to-end. Fifteen backend routes, all green."
+> Seventy-plus QA findings across eleven rounds. Five Move PTBs wired live, two settled trades on-chain right now. Thirteen seed archetypes, twenty-five-plus OPEN orders live. Fifteen backend routes, all green."
 
 **Delivery:** Brisk. This slide is proof-of-work — let the numbers speak; don't dwell on each feature.
 

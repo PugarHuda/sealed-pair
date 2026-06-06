@@ -368,16 +368,16 @@ const SLIDES: Slide[] = [
           }}
         >
           <div>
-            <div style={statBig}>59</div>
-            <div style={statLabel}>QA findings · 10 rounds</div>
+            <div style={statBig}>70+</div>
+            <div style={statLabel}>QA findings · 11 rounds · all patched</div>
           </div>
           <div>
             <div style={statBig}>5</div>
-            <div style={statLabel}>Move PTBs wired live</div>
+            <div style={statLabel}>Move PTBs wired live · 2 settled on-chain</div>
           </div>
           <div>
-            <div style={statBig}>5</div>
-            <div style={statLabel}>OrderEvent types read</div>
+            <div style={statBig}>13</div>
+            <div style={statLabel}>seed archetypes · 25+ OPEN orders live</div>
           </div>
           <div>
             <div style={statBig}>15</div>
@@ -491,7 +491,7 @@ const SLIDES: Slide[] = [
           <tbody>
             {[
               ["Walrus + Tatum Integration", "30%", "14 RPC methods · Walrus commitment + multi-publisher failover · live IntegrationHealth panel"],
-              ["Technical Quality", "30%", "Strict TS · 5 atomic PTBs · 59 QA fixes · server-side secret custody · XSS-hardened proxies"],
+              ["Technical Quality", "30%", "Strict TS · 5 atomic PTBs · 70+ QA fixes · server-side secret custody · XSS-hardened proxies"],
               ["Creativity", "20%", "Unique combo (commit-reveal + Seal + Walrus + atomic PTB for OTC) · MCP tools for AI agents"],
               ["Presentation", "20%", "Live demo · landing page · README · SUBMISSION.md · this deck"],
             ].map(([crit, w, how]) => (
