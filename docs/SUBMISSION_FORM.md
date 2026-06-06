@@ -186,55 +186,22 @@ X (Twitter):  https://x.com/<your-handle>/status/<post-id>
 LinkedIn:     https://www.linkedin.com/posts/<your-handle>_<slug>
 ```
 
-**Suggested X post body:**
+**Suggested X post (copy-paste this · 268 chars):**
 
 ```
-just shipped Sealed Pair — sealed peer-to-peer OTC trading on Sui 🦭
+🦭 Just shipped Sealed Pair — sealed P2P OTC on @SuiNetwork.
 
-🔒 maker encrypts terms locally → @WalrusFoundation blob (blobId IS the commitment)
-🌊 sealed quote hits public RFQ board
-⚛️ taker funds escrow → Seal auto-reveals → atomic PTB settles both legs
+Maker encrypts terms → @WalrusFoundation blob (blobId IS the commitment)
+Taker funds escrow → atomic PTB settles both legs
 
-powered by @Tatum_io's Sui RPC gateway (14 distinct methods) + @SuiNetwork
+14 Sui RPC methods via @Tatum_io.
 
-private quotes. public settlement. no front-running.
+sealed-pair.vercel.app
 
-live demo → https://sealed-pair.vercel.app
-deck → https://sealed-pair.vercel.app/slide
-github → https://github.com/PugarHuda/sealed-pair
-
-#TatumXWalrus #BuildOnSui
+#BuildOnSui #Walrus
 ```
 
-**Suggested LinkedIn post body:**
-
-```
-🦭 Shipped Sealed Pair for the Tatum × Walrus hackathon — sealed
-peer-to-peer OTC trading on Sui.
-
-The problem: OTC trading today forces a brutal trade-off. Post on a
-DEX and the mempool front-runs your size. Call a desk and trust them
-with the spread. Neither leaves an audit trail.
-
-The shape: maker encrypts terms locally → uploads ciphertext to Walrus
-(the blobId IS the cryptographic commitment) → sealed quote hits a
-public RFQ board → taker funds a refundable escrow on Sui → Seal-style
-policy auto-releases the decryption key → one atomic Programmable
-Transaction Block moves both legs → receipt on-chain forever.
-
-What's underneath:
-• 14 distinct Sui RPC methods via @Tatum_io's gateway
-• Walrus testnet (3 publishers + 3 aggregators, multi-host failover)
-• 5 Move PTBs deployed on Sui devnet, all wired live
-• 40 features shipped solo in 14 days
-• 4 Sui-native MCP tools that fill a real gap — Tatum's own MCP
-  doesn't yet expose Sui Blockchain Data tools
-
-Live demo: https://sealed-pair.vercel.app
-Pitch deck: https://sealed-pair.vercel.app/slide
-
-#TatumXWalrus #BuildOnSui #DeFi
-```
+*(LinkedIn longer-form version: see `docs/SOCIAL.md` if you also want to post there.)*
 
 ---
 

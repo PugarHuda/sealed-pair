@@ -8,11 +8,9 @@
 
 ---
 
-## ⭐ SUBMIT DAY — pick one and post NOW (2026-06-06)
+## ⭐ SUBMIT DAY — one tweet, one LinkedIn (2026-06-06)
 
-### MAIN TWEET (recommended · 268 chars)
-
-Copy-paste-ready. Hits the hook, lands the unique angle, includes 3 mentions + 2 hashtags + 2 links.
+### Twitter (post this exact text · 268 chars)
 
 > 🦭 Just shipped Sealed Pair — sealed P2P OTC on @SuiNetwork.
 >
@@ -25,84 +23,21 @@ Copy-paste-ready. Hits the hook, lands the unique angle, includes 3 mentions + 2
 >
 > #BuildOnSui #Walrus
 
----
-
-### THREAD VARIANT (1/4 → 4/4 for those who want depth)
-
-**1/4** (main tweet — same as above):
-
-> 🦭 Just shipped Sealed Pair — sealed P2P OTC on @SuiNetwork.
->
-> Maker encrypts terms → @WalrusFoundation blob (blobId IS the commitment)
-> Taker funds escrow → atomic PTB settles both legs
->
-> 14 Sui RPC methods via @Tatum_io.
->
-> sealed-pair.vercel.app
-
-**2/4** (the insight):
-
-> The trick: blobId is the BLAKE2b hash of the ciphertext.
->
-> Storing it on-chain in `Order.blob_id` turns Walrus from a CDN into a content-addressed cryptographic commitment.
->
-> Swap the bytes anywhere → commitment provably breaks.
->
-> That's commit-reveal for OTC.
-
-**3/4** (Tatum tools + MCP):
-
-> Tatum's official MCP doesn't yet ship Sui-native Blockchain Data tools — Sui is only via gateway_execute_rpc raw RPC.
->
-> So I built 4 Sui-native MCP tools:
-> • list_open_orders
-> • wallet_history
-> • verify_settle_digest
-> • maker_stats
->
-> `.mcp.json` composes both → AI agents get Sui + 22 chains in one config.
-
-**4/4** (deck + CTA):
-
-> 10-slide live pitch deck (keyboard-nav, click "F" for fullscreen):
-> sealed-pair.vercel.app/slide
->
-> Source:
-> github.com/PugarHuda/sealed-pair
->
-> Solo build, 14 days, 40 features. Built for @Tatum_io × @WalrusFoundation Build-on-Sui hackathon.
->
-> Private quotes. Public settlement. No middleman. 🐚
-
----
-
-### LINKEDIN — long-form (rec'd for hackathon judges who LinkedIn-stalk)
+### LinkedIn (longer, optional — only if you want the LinkedIn URL row too)
 
 > 🦭 Shipped Sealed Pair for the Tatum × Walrus hackathon — sealed peer-to-peer OTC trading on Sui.
 >
-> **The problem:** OTC trading forces a brutal trade-off. Post on a DEX and the mempool front-runs your size. Call a desk and trust them with the spread. Neither leaves an audit trail.
+> Problem: OTC today forces a trade-off — DEX leaks your size to the mempool, OTC desk leaks the spread to a middleman. Neither leaves an audit trail.
 >
-> **The shape:**
-> 1️⃣ Maker encrypts terms locally
-> 2️⃣ Ciphertext goes to Walrus → the blobId IS the cryptographic commitment (BLAKE2b hash of the ciphertext, stored in the Move Order object)
-> 3️⃣ Sealed quote hits a public RFQ board; takers see only the size band
-> 4️⃣ Taker funds refundable escrow on Sui — that escrow satisfies the Seal-style access policy
-> 5️⃣ Key auto-releases; terms decrypt for both sides; one atomic PTB settles both legs
+> Shape: maker encrypts terms locally → Walrus stores the ciphertext (blobId IS the cryptographic commitment) → taker funds escrow on Sui → key auto-releases → one atomic PTB settles both legs. Receipt on-chain forever.
 >
-> **What's underneath:**
-> • 14 distinct Sui RPC methods via Tatum's gateway (devnet/testnet/mainnet auto-switch, server-side x-api-key custody)
-> • Walrus testnet — 3 publishers + 3 aggregators with HTTP failover
-> • 5 Move PTBs deployed on Sui devnet, all wired live; 25+ OPEN orders + 2 SETTLED on-chain right now
-> • 40 features shipped solo in 14 days
-> • 4 Sui-native MCP tools that fill a real gap — Tatum's own MCP doesn't yet expose Sui Blockchain Data tools natively
+> 14 Sui RPC methods via @Tatum.io · 3 Walrus publishers · 5 Move PTBs live · 40 features solo in 14 days.
 >
-> Live demo: https://sealed-pair.vercel.app
-> Pitch deck: https://sealed-pair.vercel.app/slide
+> Live: https://sealed-pair.vercel.app
+> Deck: https://sealed-pair.vercel.app/slide
 > Source: https://github.com/PugarHuda/sealed-pair
 >
-> Big credit to @Tatum.io for the gateway, @Mysten Labs for Sui + Walrus + Seal, and the @WalrusFoundation team for the storage primitive that made this possible.
->
-> #TatumXWalrus #BuildOnSui #Sui #Walrus #DeFi #OTC
+> #BuildOnSui #Walrus #Sui
 
 ---
 
