@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useCurrentAccount } from "@mysten/dapp-kit";
 import { ASSETS, bandFor } from "@/lib/data";
 import type { AssetSym, Side } from "@/lib/types";
 import { Badge, Btn, Card, Field, Input, Segmented, inputStyle, Row } from "@/components/ui/primitives";
@@ -61,6 +62,7 @@ export default function CreateScreen({
   role: "marina" | "theo";
   onSeal: (d: CreateDraft) => void;
 }) {
+  const account = useCurrentAccount();
   const [side, setSide] = useState<Side>("SELL");
   const [give, setGive] = useState<AssetSym>("SUI");
   const [get, setGet] = useState<AssetSym>("USDC");
@@ -200,8 +202,12 @@ export default function CreateScreen({
               <Row label={<span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--seal-glow)" }}><Icon name="lock" size={13} /> Counter-value</span>}><Ghost w={80} /></Row>
             </div>
           </Card>
-          <Btn size="lg" variant="seal" icon="lock" full disabled={!canSeal} onClick={() => onSeal(draft)}>
-            {audience === "PRIVATE" && !targetLooksValid ? "Enter recipient address" : "Seal & post to Walrus"}
+          <Btn size="lg" variant="seal" icon="lock" full disabled={!canSeal || !account} onClick={() => onSeal(draft)}>
+            {!account
+              ? "Connect wallet to seal"
+              : audience === "PRIVATE" && !targetLooksValid
+              ? "Enter recipient address"
+              : "Seal & post to Walrus"}
           </Btn>
           <div style={{ fontSize: 12.5, color: "var(--text-faint)", textAlign: "center", lineHeight: 1.5 }}>
             Encrypt → Walrus blobId (commitment) → Seal policy → Order object on Sui. ~4s, ~$0.02 in gas.

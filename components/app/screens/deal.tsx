@@ -732,10 +732,12 @@ export default function DealScreen({
                 <Btn
                   full
                   variant="quiet"
-                  disabled={cancelling || !!cancelDigest}
+                  disabled={cancelling || !!cancelDigest || !account}
                   onClick={cancelOffer}
                 >
-                  {cancelDigest
+                  {!account
+                    ? "Connect wallet to cancel"
+                    : cancelDigest
                     ? "Cancelled"
                     : cancelling
                     ? "Cancelling…"
@@ -841,10 +843,12 @@ export default function DealScreen({
                   size="lg"
                   variant="seal"
                   icon="unlock"
-                  disabled={phase === "funding" || !!balanceIssue || targetMismatch}
+                  disabled={phase === "funding" || !!balanceIssue || targetMismatch || !account}
                   onClick={fund}
                 >
-                  {phase === "funding"
+                  {!account
+                    ? "Connect wallet to fund escrow"
+                    : phase === "funding"
                     ? "Funding…"
                     : targetMismatch
                     ? "Not for this wallet"
@@ -895,8 +899,15 @@ export default function DealScreen({
                     </span>
                   </Row>
                 </div>
-                <Btn full size="lg" variant="primary" icon="bolt" onClick={() => onSettle(order)}>
-                  Confirm &amp; settle atomically
+                <Btn
+                  full
+                  size="lg"
+                  variant="primary"
+                  icon="bolt"
+                  disabled={!account}
+                  onClick={() => onSettle(order)}
+                >
+                  {account ? "Confirm & settle atomically" : "Connect wallet to settle"}
                 </Btn>
                 <div style={{ fontSize: 12, color: "var(--text-faint)", textAlign: "center", marginTop: 8 }}>
                   One PTB · both legs · no MEV window
