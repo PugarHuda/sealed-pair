@@ -49,8 +49,15 @@ export async function GET(req: NextRequest) {
   } catch (e) {
     // Surface upstream status (esp. 429) verbatim so the client can choose
     // a friendlier degraded UI rather than a generic red error pill.
+    //
+    // RpcError.code semantics: HTTP status codes (>=400) come from non-2xx
+    // upstream responses. Negative codes (-1 = missing API key, -32xxx =
+    // JSON-RPC body errors) are NOT HTTP statuses and shouldn't be cached
+    // as "the gateway is down" — those won't self-recover at the 4s window.
+    const isRpc = e instanceof RpcError;
+    const isConfig = isRpc && e.code === -1; // missing TATUM_API_KEY_*
     const upstreamStatus =
-      e instanceof RpcError && e.code >= 400 && e.code < 600 ? e.code : 502;
+      isRpc && e.code >= 400 && e.code < 600 ? e.code : 502;
     const msg = e instanceof Error ? e.message : "Unknown error";
     const payload = {
       ok: false as const,
@@ -59,9 +66,11 @@ export async function GET(req: NextRequest) {
       upstreamStatus,
       latencyMs: Date.now() - t0,
     };
-    // Cache errors for HALF the success TTL so we recover fast once the
-    // upstream lets up, but still don't hammer Tatum during a 429 storm.
-    cache.set(network, { expires: Date.now() + CACHE_MS / 2, payload, status: upstreamStatus });
-    return NextResponse.json(payload, { status: upstreamStatus });
+    // Cache transient upstream errors at half TTL so we recover fast. Don't
+    // cache config errors — they need an env-var fix, not a wait.
+    if (!isConfig) {
+      cache.set(network, { expires: Date.now() + CACHE_MS / 2, payload, status: upstreamStatus });
+    }
+    return NextResponse.json(payload, { status: isConfig ? 500 : upstreamStatus });
   }
 }

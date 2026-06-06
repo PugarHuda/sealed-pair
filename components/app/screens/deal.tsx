@@ -312,7 +312,7 @@ export default function DealScreen({
         });
         if (res.ok) {
           const json = (await res.json()) as {
-            result?: { data?: { content?: { fields?: { state?: unknown } } } };
+            result?: { data?: { content?: { fields?: { state?: unknown; expiry_epoch?: unknown } } } };
           };
           const rawState = json.result?.data?.content?.fields?.state;
           const state = typeof rawState === "string" || typeof rawState === "number" ? Number(rawState) : NaN;
@@ -324,6 +324,46 @@ export default function DealScreen({
             );
             setPhase("sealed");
             return;
+          }
+          // Expiry pre-flight. The on-chain `expiry_epoch` is the source of
+          // truth; the card's "27d 21h" countdown is a human estimate from
+          // a different field and can disagree (notably for seed orders
+          // posted on devnet with short epoch windows). If we discover the
+          // order already expired here, surface that BEFORE the wallet
+          // signs — the Move call would otherwise abort with code 3 (EExpired)
+          // and the user pays gas for nothing.
+          const rawExpiry = json.result?.data?.content?.fields?.expiry_epoch;
+          const expiryEpoch =
+            typeof rawExpiry === "string" || typeof rawExpiry === "number" ? Number(rawExpiry) : NaN;
+          if (Number.isFinite(expiryEpoch)) {
+            try {
+              const sysRes = await fetch("/api/sui", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  method: "sui_getLatestSuiSystemState",
+                  params: [],
+                  network: SUI_NETWORK_FOR_EVENTS,
+                }),
+              });
+              if (sysRes.ok) {
+                const sysJson = (await sysRes.json()) as { result?: { epoch?: unknown } };
+                const epochRaw = sysJson.result?.epoch;
+                const currentEpoch =
+                  typeof epochRaw === "string" || typeof epochRaw === "number" ? Number(epochRaw) : NaN;
+                if (Number.isFinite(currentEpoch) && currentEpoch >= expiryEpoch) {
+                  if (!mountedRef.current) return;
+                  setFundError(
+                    `This order expired at epoch ${expiryEpoch} (current epoch ${currentEpoch}). The card's countdown was estimated from posting time, not the on-chain expiry — try a fresher sealed order from the board.`,
+                  );
+                  setPhase("sealed");
+                  return;
+                }
+              }
+            } catch {
+              // System-state RPC blip — fall through to the real tx; if it
+              // really IS expired, MoveAbort(3) will still be caught below.
+            }
           }
         }
       } catch {
@@ -381,9 +421,11 @@ export default function DealScreen({
             : msg.includes("abort code: 0")
             ? "Order isn't in a state we can act on — already locked by someone else, already revealed, or expired. Pick a different unlocked card."
             : msg.includes("abort code: 1")
-            ? "Escrow amount doesn't match what the maker locked in."
+            ? "Escrow amount doesn't match what the maker set."
             : msg.includes("abort code: 2")
             ? "Your wallet isn't a party to this order — only maker or taker can reveal."
+            : msg.includes("abort code: 3")
+            ? "This order expired on-chain. Card's countdown was estimated from posting time, not the on-chain expiry epoch — pick a fresher sealed order from the board."
             : msg.slice(0, 200);
         setFundError(hint);
         setPhase("sealed");
@@ -457,6 +499,14 @@ export default function DealScreen({
   const reapExpired = async () => {
     setReaping(true);
     setReapError(null);
+    // Same logic as cancelOffer: don't silently fall back to local-only state
+    // flip if the wallet-gate was bypassed. A no-op-that-looks-like-success
+    // is the canonical silent failure.
+    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID && !account) {
+      setReapError("Connect a wallet first.");
+      setReaping(false);
+      return;
+    }
     if (!(onChainEnabled && SEALED_PAIR_PACKAGE_ID && account)) {
       onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
       setReaping(false);
@@ -501,8 +551,16 @@ export default function DealScreen({
   const cancelOffer = async () => {
     setCancelling(true);
     setCancelError(null);
+    // If the wallet-gate UI was bypassed (devtools), don't silently flip the
+    // local state to CANCELLED — that would *look* like success but produce
+    // zero on-chain effect. Surface a real error so the user notices.
+    if (onChainEnabled && SEALED_PAIR_PACKAGE_ID && !account) {
+      setCancelError("Connect a wallet first.");
+      setCancelling(false);
+      return;
+    }
     if (!(onChainEnabled && SEALED_PAIR_PACKAGE_ID && account)) {
-      // Demo path — just flip local state.
+      // True demo path — package never deployed, mock UI only.
       onUpdate(order.id, { state: "CANCELLED" as Order["state"] });
       setCancelling(false);
       return;

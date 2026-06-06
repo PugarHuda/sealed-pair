@@ -45,7 +45,16 @@ export default function NetworkPill({
       let nextDelay = POLL_OK_MS;
       try {
         const res = await fetch(`/api/health?network=${network}`, { cache: "no-store" });
-        const json = (await res.json()) as Health;
+        // Guard JSON parse: a 200-with-HTML-interstitial (CDN edge, captive
+        // portal, proxy) or a non-JSON error body would otherwise throw out
+        // of the try and lose the HTTP status — so the friendly "Rate-limited"
+        // copy never fires for a 429 whose body happens to be HTML.
+        let json: Health;
+        try {
+          json = (await res.json()) as Health;
+        } catch {
+          json = { ok: false, error: "Bad gateway response", upstreamStatus: res.status };
+        }
         if (cancelled) return;
         if (json.ok) {
           lastRef.current = json;

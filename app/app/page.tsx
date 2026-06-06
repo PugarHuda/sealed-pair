@@ -628,35 +628,32 @@ export default function AppPage() {
               <button
                 type="button"
                 onClick={() => setInboxOpen(true)}
-                aria-label="Inbox — incoming activity on your orders"
-                title={inboxCount > 0 ? `${inboxCount} new incoming activity` : "Inbox (no activity yet)"}
+                aria-label={inboxCount > 0
+                  ? `Inbox — ${inboxCount} new incoming activity on your orders`
+                  : "Inbox — no incoming activity"}
+                title={inboxCount > 0 ? `${inboxCount} new incoming activity on your orders` : "Inbox (no activity yet)"}
                 style={{
                   position: "relative",
                   display: "inline-flex",
-                  alignItems: "center", justifyContent: "center",
-                  width: 36, height: 36,
-                  background: inboxCount > 0 ? "color-mix(in oklab, var(--accent) 16%, var(--deep))" : "var(--deep)",
+                  alignItems: "center", gap: 7,
+                  padding: "8px 13px",
+                  background: inboxCount > 0
+                    ? "color-mix(in oklab, var(--accent) 22%, var(--deep))"
+                    : "var(--deep)",
                   border: `1px solid ${inboxCount > 0 ? "var(--accent)" : "var(--border)"}`,
                   borderRadius: 99,
                   cursor: "pointer",
                   color: inboxCount > 0 ? "var(--accent)" : "var(--text-dim)",
+                  fontSize: 13, fontWeight: 700,
+                  letterSpacing: ".01em",
+                  // Subtle pulse when there's activity — draws the eye without
+                  // being annoying. CSS animation is defined in globals.css
+                  // ("pulse-accent"); falls back to a solid state if missing.
+                  animation: inboxCount > 0 ? "pulse-accent 2.2s ease-in-out infinite" : undefined,
                 }}
               >
-                <Icon name="doc" size={15} sw={2.4} />
-                {inboxCount > 0 && (
-                  <span
-                    style={{
-                      position: "absolute", top: -3, right: -3,
-                      background: "var(--accent)", color: "var(--accent-ink)",
-                      fontSize: 10, fontWeight: 800,
-                      minWidth: 17, height: 17, padding: "0 5px",
-                      borderRadius: 99,
-                      display: "grid", placeItems: "center",
-                    }}
-                  >
-                    {inboxCount}
-                  </span>
-                )}
+                <Icon name="doc" size={14} sw={2.4} />
+                <span>Inbox{inboxCount > 0 ? ` · ${inboxCount}` : ""}</span>
               </button>
             )}
             <WatchlistButton onOpen={() => setWatchlistOpen(true)} />
@@ -686,6 +683,43 @@ export default function AppPage() {
           transition: "opacity .12s ease-out",
         }}
       >
+        {hydrated && view === "board" && account && inboxCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setInboxOpen(true)}
+            style={{
+              width: "100%",
+              display: "flex", alignItems: "center", gap: 14,
+              padding: "14px 20px",
+              marginBottom: 14,
+              background: "color-mix(in oklab, var(--accent) 14%, var(--surface))",
+              border: "1px solid var(--accent)",
+              borderRadius: "var(--r-md)",
+              cursor: "pointer",
+              textAlign: "left",
+              animation: "pulse-accent 2.6s ease-in-out infinite",
+            }}
+            aria-label={`Open inbox — ${inboxCount} new`}
+          >
+            <span style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "var(--accent)", color: "var(--accent-ink)",
+              display: "grid", placeItems: "center", flex: "0 0 auto",
+              fontWeight: 800, fontSize: 14,
+            }}>
+              {inboxCount}
+            </span>
+            <span style={{ flex: 1 }}>
+              <div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--accent)", marginBottom: 2 }}>
+                {inboxCount === 1 ? "Someone responded to your offer" : `${inboxCount} new on your offers`}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>
+                Takers locked your orders or sent counter-offers — open the inbox to see who and decide what to do.
+              </div>
+            </span>
+            <Icon name="chev" size={16} style={{ color: "var(--accent)" }} />
+          </button>
+        )}
         {hydrated && view === "board" && <BoardScreen orders={orders} role={role} onOpen={openDeal} repMap={repMap} onMakerProfile={setProfileAddr} initialPair={initialPair} onRefresh={refreshLiveOrders} lastRefreshMs={lastRefreshMs} />}
         {hydrated && view === "create" && <CreateScreen role={role} onSeal={beginSeal} />}
         {hydrated && view === "vault" && <VaultScreen settled={settled} repMap={repMap} />}
@@ -700,6 +734,42 @@ export default function AppPage() {
             onRoleSwitch={setRole}
             onBack={(to) => (to === "vault" ? goNav("vault") : goNav("board"))}
           />
+        )}
+        {/* Deal view fallback: if activeId is set (deep-link / pushState
+            navigation) but the order isn't in `orders` yet (suix_queryEvents
+            still resolving, or the orderId came from a stale shared URL),
+            we used to render NOTHING here — the page looked blank except
+            for header + sponsor stack. Now we render a friendly placeholder
+            so the user has a path back to the board instead of a dead page. */}
+        {hydrated && view === "deal" && !active && (
+          <div
+            style={{
+              padding: "60px 20px", textAlign: "center",
+              background: "var(--surface)",
+              border: "1px solid var(--border-soft)",
+              borderRadius: "var(--r-md)",
+              color: "var(--text-dim)",
+            }}
+          >
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, color: "var(--text)", marginBottom: 8 }}>
+              Loading order…
+            </div>
+            <div style={{ fontSize: 14, marginBottom: 22 }}>
+              Fetching this order from the live board. If you arrived via a shared link, the order might be a few seconds away — or it may already be settled or cancelled.
+            </div>
+            <button
+              type="button"
+              onClick={() => goNav("board")}
+              style={{
+                padding: "10px 22px", fontSize: 13, fontWeight: 700,
+                background: "var(--surface-3)", color: "var(--text)",
+                border: "1px solid var(--border)", borderRadius: 99,
+                cursor: "pointer",
+              }}
+            >
+              ← Back to board
+            </button>
+          </div>
         )}
         {!hydrated && <BoardSkeleton />}
       </main>
