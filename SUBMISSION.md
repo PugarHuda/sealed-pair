@@ -48,6 +48,8 @@ We surveyed all 599 Sui Overflow 2025 submissions and the full Walrus showcase. 
 
 **4 read-only MCP tools** at `/api/mcp/*` expose this surface to AI agents (Claude Desktop, Cursor, custom orchestrators). Catalog at https://sealed-pair.vercel.app/api/mcp; canonical client config at [`.mcp.json`](./.mcp.json).
 
+**Why this is not redundant with Tatum's own MCP:** Tatum's official MCP server ships 10 Blockchain Data tools + 4 RPC Gateway tools, but as of June 2026 the Blockchain Data catalog covers 22+ chains natively (EVM family, BTC family, Solana, Cardano, Tezos, Stellar, Ripple, EOS) **and does NOT include Sui**. Sui is only reachable through `gateway_execute_rpc` (raw JSON-RPC passthrough). Sealed Pair's 4 tools fill that gap with Sui-native semantics — RFQ board state, OrderSettled provenance, maker reputation, wallet history filtered to a Sui address. Composing both servers in one config gives an AI agent first-class Sui semantics PLUS raw multi-chain coverage — neither side delivers that alone.
+
 **Multi-network gateway support** — devnet/testnet/mainnet auto-switch based on `NEXT_PUBLIC_SUI_NETWORK_FOR_EVENTS`. Vault renders a live "Integration health" card that pings the Tatum gateway in real time and shows the round-trip latency.
 
 ---

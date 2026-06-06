@@ -226,7 +226,7 @@ Sealed Pair touches every layer of the Tatum stack relevant to this hackathon:
 | **RPC Nodes** (Sui mainnet/testnet/devnet) | 14 RPC methods through `/api/sui` proxy — events, objects, modules, balances, dry-run, dev-inspect, dynamic fields |
 | **RPC Gateway** | Each `sui-<network>.gateway.tatum.io` URL with `x-api-key` server-side custody. Latency probed live in `/api/integration-health`. |
 | **Data API** | `suix_queryTransactionBlocks` powers the wallet portfolio's recent-activity feed (`/api/tatum-data/wallet-history`) |
-| **MCP** | Our `.mcp.json` composes our sealed-pair tools with Tatum's official MCP server for full Sui RPC access from any AI client |
+| **MCP** | Our `.mcp.json` composes our 4 Sui-native sealed-pair tools with Tatum's official MCP (which currently exposes Sui only via `gateway_execute_rpc` raw RPC, not native Blockchain Data tools — see [AI integration](#ai-integration) for why this matters) |
 | **My Gateways** (optional swap) | To replace the public gateway with a custom load-balanced URL: set `NEXT_PUBLIC_TATUM_GATEWAY_<NETWORK>=https://your-gateway-id.gateway.tatum.io` and route through `lib/networks.ts`. Same x-api-key auth. |
 
 ## Walrus tools matrix
@@ -247,6 +247,22 @@ Sealed Pair exposes its on-chain reads as **MCP-compatible HTTP tools** so any
 AI agent (Claude Desktop, Cursor, Continue, custom orchestrator) can query
 the live RFQ board, verify settlement digests, and read maker reputation
 without needing to wire the Sui RPC plumbing themselves.
+
+### Why this isn't redundant with Tatum's own MCP
+
+Tatum ships [an official MCP server](https://docs.tatum.io/docs/mcp-server)
+with **10 Blockchain Data tools** + **4 RPC Gateway tools**. As of June 2026
+the Blockchain Data tools (`get_wallet_portfolio`, `get_transaction_history`,
+`get_metadata`, …) cover **22+ chains natively** — Ethereum, Polygon, Arb,
+Op, Base, BNB, Avax, BTC family, Solana, Cardano, Tezos, Stellar, Ripple,
+EOS — but **not Sui**. Sui is only reachable via `gateway_execute_rpc`
+(raw JSON-RPC passthrough).
+
+That's the surface Sealed Pair's 4 tools complement. They expose **Sui-native
+semantics** — RFQ board state, OrderSettled provenance check, maker reputation
+aggregation, wallet-history filtered to a Sui address. An AI agent that
+composes both servers gets first-class Sui semantics PLUS raw multi-chain
+RPC access in one config — neither server gives that alone.
 
 ```bash
 # Live tool catalog

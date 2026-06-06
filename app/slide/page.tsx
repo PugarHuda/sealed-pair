@@ -390,12 +390,30 @@ const SLIDES: Slide[] = [
   // 8 — AI-ready
   {
     kicker: "AI surface",
-    title: "MCP-ready out of the box",
+    title: "Sui-native MCP — filling a real gap",
     body: (
       <div style={{ marginTop: 30 }}>
-        <div style={{ fontSize: 18, color: "var(--text-dim)", lineHeight: 1.5, maxWidth: 880, marginBottom: 24 }}>
-          Any AI agent (Claude Desktop, Cursor, custom orchestrator) can query the live RFQ board, verify
-          settlement digests, and read maker reputation — without wiring Sui RPC plumbing.
+        <div
+          style={{
+            padding: "16px 22px",
+            background: "color-mix(in oklab, var(--seal-glow) 10%, var(--surface))",
+            border: "1px solid var(--seal-glow)",
+            borderRadius: "var(--r-md)",
+            fontSize: 16,
+            lineHeight: 1.55,
+            color: "var(--text)",
+            marginBottom: 22,
+          }}
+        >
+          <b style={{ color: "var(--seal-glow)" }}>The gap:</b> Tatum&apos;s official MCP ships
+          10 Blockchain Data tools across 22+ chains (EVM family, BTC family, Solana, Cardano, …) —
+          <b style={{ color: "var(--text)" }}> but Sui isn&apos;t one of them.</b> Sui only via
+          raw <span style={mono}>gateway_execute_rpc</span>. We ship the Sui-native layer
+          neither side delivers alone.
+        </div>
+        <div style={{ fontSize: 17, color: "var(--text-dim)", lineHeight: 1.5, maxWidth: 880, marginBottom: 22 }}>
+          Any AI agent (Claude Desktop, Cursor, custom orchestrator) can query the live RFQ board,
+          verify settlement digests, and read maker reputation — without wiring Sui RPC plumbing.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           {[

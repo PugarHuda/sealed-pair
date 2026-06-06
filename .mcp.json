@@ -1,7 +1,7 @@
 {
   "$schema": "https://modelcontextprotocol.io/schemas/mcp.json",
   "name": "sealed-pair",
-  "description": "MCP tools for the Sealed Pair sealed P2P OTC dApp on Sui — read open RFQ orders, verify settlement digests, look up maker reputation. Stack with Tatum's official MCP for general-purpose Sui RPC access.",
+  "description": "Sui-native MCP tools for the Sealed Pair sealed P2P OTC dApp — read open RFQ orders, verify settlement digests, look up maker reputation, query wallet history. Fills a real gap: Tatum's own official MCP doesn't expose Sui-native Blockchain Data tools yet (its native catalog covers EVM chains + Bitcoin family + Solana et al — Sui only via gateway_execute_rpc raw RPC). Compose both servers below to give an AI agent first-class Sui semantics AND raw multi-chain access in one config.",
   "version": "0.1.0",
   "servers": {
     "sealed-pair-http": {
@@ -47,7 +47,7 @@
     "tatum-official": {
       "transport": "sse",
       "optional": true,
-      "description": "Tatum's official MCP server for general Sui (and 100+ chain) RPC access. Compose alongside sealed-pair tools for the broadest blockchain coverage in one config. Requires your own Tatum API key set in the TATUM_API_KEY env variable BEFORE starting your MCP client — if unset, omit this server entry to avoid noisy 401s from upstream.",
+      "description": "Tatum's official MCP server — 10 Blockchain Data tools (get_wallet_portfolio, get_transaction_history, get_metadata, …) + 4 RPC Gateway tools (gateway_execute_rpc, gateway_get_supported_chains, …). Native Blockchain Data tools cover Ethereum/Polygon/Arb/Op/Base/BNB/Avax/Fantom/Celo/Gnosis/Ronin/Chiliz + Bitcoin/Litecoin/Dogecoin/BCH + Solana/Cardano/Tezos/Stellar/Ripple/EOS. Sui is reachable via `gateway_execute_rpc` (raw RPC passthrough) — that's the surface our sealed-pair tools complement with Sui-native semantics. Set TATUM_API_KEY before starting the MCP client; if unset, omit this entry to avoid 401s.",
       "url": "https://api.tatum.io/mcp",
       "auth": { "type": "header", "headerName": "x-api-key", "valueEnv": "TATUM_API_KEY" },
       "docs": "https://docs.tatum.io/docs/mcp-server"
@@ -57,6 +57,7 @@
     "All sealed-pair tools are read-only and route through Tatum's Sui RPC gateway with server-side API key custody.",
     "Mutations (create_offer, lock_with_escrow, settle, cancel_open, cancel_expired) require wallet signing and are not exposed.",
     "GET /api/mcp returns the live tool catalog with full JSON schemas.",
-    "Compose 'sealed-pair-http' + 'tatum-official' in your MCP client to give an AI agent both Sealed Pair semantics AND raw Tatum RPC access."
+    "Why two servers: as of Jun 2026 Tatum's official MCP doesn't expose Sui-native Blockchain Data tools — Sui only via `gateway_execute_rpc` raw RPC. Our sealed-pair-http server fills that gap with Sui-native semantics (RFQ board state, OrderSettled provenance, maker reputation), and you still get Tatum's Blockchain Data tools for the 22+ other chains they natively support.",
+    "Compose 'sealed-pair-http' + 'tatum-official' in your MCP client to give an AI agent first-class Sui semantics AND raw multi-chain access in one config."
   ]
 }
