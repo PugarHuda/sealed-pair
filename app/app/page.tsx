@@ -122,58 +122,6 @@ function Logo({ onHome }: { onHome: () => void }) {
   );
 }
 
-function RoleToggle({ role, onChange }: { role: Role; onChange: (r: Role) => void }) {
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        background: "var(--deep)",
-        border: "1px solid var(--border)",
-        borderRadius: 99,
-        padding: 4,
-        gap: 4,
-      }}
-    >
-      {(["marina", "theo"] as Role[]).map((r) => {
-        const p = PERSONAS[r];
-        const on = r === role;
-        return (
-          <button
-            key={r}
-            onClick={() => onChange(r)}
-            title={p.role}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 9,
-              border: "none", borderRadius: 99,
-              padding: "6px 14px 6px 6px",
-              cursor: "pointer",
-              background: on ? "var(--surface-3)" : "transparent",
-              transition: "all .15s",
-            }}
-          >
-            <span
-              style={{
-                width: 28, height: 28, borderRadius: "50%",
-                background: p.avatar, color: "#06121f",
-                display: "grid", placeItems: "center",
-                fontWeight: 800, fontFamily: "var(--font-display)",
-              }}
-            >
-              {p.name[0]}
-            </span>
-            <span style={{ textAlign: "left" }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: on ? "var(--text)" : "var(--text-dim)", lineHeight: 1 }}>
-                {p.name}
-              </div>
-              <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}>{p.role}</div>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 // Cache the last batch of live on-chain orders in localStorage so the board
 // renders instantly on hard refresh instead of flashing the seed-only view
 // while the first Tatum RPC call completes. Capped at 50 entries — the same
@@ -713,15 +661,12 @@ export default function AppPage() {
             )}
             <WatchlistButton onOpen={() => setWatchlistOpen(true)} />
             <ConnectButton />
-            {/* Persona toggle is a pre-wallet demo artifact. Once a real
-                wallet is connected, your identity comes from the address —
-                showing the toggle is misleading. Gate on `hydrated` AND on
-                autoConnect being settled, so we don't paint the toggle
-                during the ~200-500ms while dApp Kit re-attaches a saved
-                wallet (account is briefly null during that window). */}
-            {hydrated && autoConnect !== "idle" && !account && (
-              <RoleToggle role={role} onChange={setRole} />
-            )}
+            {/* The Marina/Theo persona toggle used to live here as a pre-wallet
+                demo affordance. It's gone now: the connected wallet IS the
+                identity. Pre-connect we just show ConnectButton; post-connect
+                we show the address. Role state still flows internally (defaults
+                to "maker"); the Create / Deal screens drive their own role
+                context from which CTA the user clicked, not from a header toggle. */}
           </div>
         </div>
       </header>
