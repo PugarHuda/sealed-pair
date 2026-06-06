@@ -134,6 +134,28 @@ const CASES = [
     note: "Bilateral block — pre-agreed terms with named taker.",
     requiresTarget: true,
   },
+  // ---- Round 2 archetypes (added during pre-submission polish) ----
+  {
+    name: "fresh-quick",
+    desc: "Fresh quick · 4 epoch expiry · medium retail SUI sell",
+    terms: () => ({ give: "SUI", get: "USDC", amount: 8_500, price: 3.91 }),
+    expiryEpochs: 4,
+    note: "Quick fill — first taker wins.",
+  },
+  {
+    name: "mid-block-buy",
+    desc: "Mid block BUY · USDC → WAL · sized for desks, not whales",
+    terms: () => ({ give: "USDC", get: "WAL", amount: 15_000, price: 1.62 }),
+    expiryEpochs: 30,
+    note: "Filling a WAL position over the next week.",
+  },
+  {
+    name: "deep-bid",
+    desc: "DEEP bid · USDC → DEEP · niche DEX position build",
+    terms: () => ({ give: "USDC", get: "DEEP", amount: 4_500, price: 0.072 }),
+    expiryEpochs: 20,
+    note: "Building a DEEP LP position — accumulate quietly.",
+  },
 ];
 
 function readDotEnv(file) {
