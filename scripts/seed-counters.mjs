@@ -40,6 +40,7 @@ const arg = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : nu
 const MAKER = arg("--maker");
 const COUNT = Number(arg("--count")) || 5;
 const APP_URL = arg("--app") || "https://sealed-pair.vercel.app/app";
+const INCLUDE_EXPIRED = argv.includes("--include-expired");
 
 if (!MAKER || !/^0x[0-9a-fA-F]{64}$/.test(MAKER)) {
   console.error(`${RED}Usage: node scripts/seed-counters.mjs --maker 0x<64hex> [--count 5]${RESET}`);
@@ -131,7 +132,7 @@ async function findMakerOrders(client, packageId, maker, currentEpoch) {
     const state = Number(fields.state);
     const expiryEpoch = Number(fields.expiry_epoch);
     if (state !== 0) continue;
-    if (!Number.isFinite(expiryEpoch) || currentEpoch >= expiryEpoch) continue;
+    if (!INCLUDE_EXPIRED && (!Number.isFinite(expiryEpoch) || currentEpoch >= expiryEpoch)) continue;
     open.push({
       orderId: objs[i].data.objectId,
       blobId: fields.blob_id,
